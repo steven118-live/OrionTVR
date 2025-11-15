@@ -1,19 +1,23 @@
 import React, { useMemo } from 'react';
 import { View, type ViewProps } from 'react-native';
 import OpenCC from 'opencc-js';
-import * as RNLocalize from 'react-native-localize';
+
+let RNLocalize: any = { getLocales: () => [] };
+try {
+  RNLocalize = require('react-native-localize');
+} catch {
+  RNLocalize = { getLocales: () => [] };
+}
 
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { useSettingsStore } from '@/stores/settingsStore'; // 若無此 store，呼叫會被捕獲回 null
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export type ThemedViewProps = ViewProps & {
   lightColor?: string;
   darkColor?: string;
 };
 
-// opencc 初始化（最小相容寫法）
 const converter = (OpenCC as any).Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
-
 const convertCache = new Map<string, string>();
 const hasCJK = (s: string) => /[\u4e00-\u9fff]/.test(s);
 const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]/;
@@ -57,16 +61,14 @@ export default function ThemedView({
 }: ThemedViewProps) {
   const backgroundColor = useThemeColor({ light: lightColor, dark: darkColor }, 'background');
 
-  // safety: 嘗試讀取設定（若不存在則回傳 null）
   let settingsStore: any = null;
   try {
     settingsStore = useSettingsStore ? useSettingsStore() : null;
   } catch {
     settingsStore = null;
   }
-  const displayPref = settingsStore?.displayLanguagePreference || 'auto'; // 'auto'|'traditional'|'simplified'|'off'
+  const displayPref = settingsStore?.displayLanguagePreference || 'auto';
 
-  // 判斷 device 是否為簡體傾向
   const deviceLocales = RNLocalize.getLocales?.() || [];
   const devicePrefSimplified = deviceLocales.some((l) =>
     /Hans|CN|Mainland|zh-CN|zh-SG|zh-Hans/i.test(l?.languageTag || l?.language || '')
