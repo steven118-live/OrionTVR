@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -18,14 +18,13 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
-import Logger from '@/utils/Logger';
-
-// ✅ 安全引入 opencc-js
+import Logger from "@/utils/Logger";
 import OpenCC from "opencc-js";
-const converter: ((s: string) => string) | undefined =
-  typeof OpenCC?.Converter === 'function' ? OpenCC.Converter({ from: "tw", to: "cn" }) : undefined;
 
-const logger = Logger.withTag('SearchScreen');
+const converter: ((s: string) => string) | undefined =
+  typeof OpenCC?.Converter === "function" ? OpenCC.Converter({ from: "tw", to: "cn" }) : undefined;
+
+const logger = Logger.withTag("SearchScreen");
 
 export default function SearchScreen() {
   const [keyword, setKeyword] = useState("");
@@ -43,14 +42,13 @@ export default function SearchScreen() {
   const { deviceType, spacing } = responsiveConfig;
 
   useEffect(() => {
-    if (lastMessage && targetPage === 'search') {
+    if (lastMessage && targetPage === "search") {
       logger.debug("Received remote input:", lastMessage);
       const realMessage = lastMessage.split("_")[0];
       setKeyword(realMessage);
       handleSearch(realMessage);
       clearMessage();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
 
   const handleSearch = async (searchText?: string) => {
@@ -60,7 +58,6 @@ export default function SearchScreen() {
       return;
     }
 
-    // ✅ 繁轉簡（安全處理）
     let simplifiedTerm = term;
     try {
       if (converter) {
@@ -74,6 +71,7 @@ export default function SearchScreen() {
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
+    setResults([]);
     try {
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
@@ -86,6 +84,7 @@ export default function SearchScreen() {
       logger.info("Search failed:", err);
     } finally {
       setLoading(false);
+      setKeyword("");
     }
   };
 
@@ -99,7 +98,7 @@ export default function SearchScreen() {
       ]);
       return;
     }
-    showRemoteModal('search');
+    showRemoteModal("search");
   };
 
   const renderItem = ({ item }: { item: SearchResult; index: number }) => (
@@ -140,14 +139,20 @@ export default function SearchScreen() {
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
             returnKeyType="search"
+            {...(Platform.OS === "web"
+              ? {
+                  onCompositionStart: () => logger.debug("composition start"),
+                  onCompositionEnd: () => logger.debug("composition end"),
+                }
+              : {})}
           />
         </TouchableOpacity>
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
-          <Search size={deviceType === 'mobile' ? 20 : 24} color="white" />
+          <Search size={deviceType === "mobile" ? 20 : 24} color="white" />
         </StyledButton>
-        {deviceType !== 'mobile' && (
+        {deviceType !== "mobile" && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
-            <QrCode size={deviceType === 'tv' ? 24 : 20} color="white" />
+            <QrCode size={deviceType === "tv" ? 24 : 20} color="white" />
           </StyledButton>
         )}
       </View>
@@ -177,7 +182,7 @@ export default function SearchScreen() {
     </ThemedView>
   );
 
-  if (deviceType === 'tv') {
+  if (deviceType === "tv") {
     return content;
   }
 
@@ -190,13 +195,13 @@ export default function SearchScreen() {
 }
 
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === 'mobile';
+  const isMobile = deviceType === "mobile";
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
 
   return StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: deviceType === 'tv' ? 50 : 0,
+      paddingTop: deviceType === "tv" ? 50 : 0,
     },
     searchContainer: {
       flexDirection: "row",
@@ -227,7 +232,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: isMobile ? 8 : 8,
-      marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
+      marginRight: deviceType !== "mobile" ? spacing / 2 : 0,
     },
     qrButton: {
       width: isMobile ? minTouchTarget : 50,
