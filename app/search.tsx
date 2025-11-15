@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -84,7 +84,7 @@ export default function SearchScreen() {
       logger.info("Search failed:", err);
     } finally {
       setLoading(false);
-      setKeyword("");
+      setTimeout(() => setKeyword(""), 100);
     }
   };
 
@@ -136,15 +136,14 @@ export default function SearchScreen() {
             value={keyword}
             onChangeText={setKeyword}
             onSubmitEditing={onSearchPress}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === "Enter") {
+                handleSearch();
+              }
+            }}
             onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
             returnKeyType="search"
-            {...(Platform.OS === "web"
-              ? {
-                  onCompositionStart: () => logger.debug("composition start"),
-                  onCompositionEnd: () => logger.debug("composition end"),
-                }
-              : {})}
           />
         </TouchableOpacity>
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
