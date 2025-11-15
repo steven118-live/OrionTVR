@@ -1,5 +1,13 @@
-import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View,
+  TextInput,
+  StyleSheet,
+  Alert,
+  Keyboard,
+  TouchableOpacity,
+  Platform,
+} from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -21,6 +29,8 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from "@/utils/Logger";
 import OpenCC from "opencc-js";
 
+type TextInputRef = TextInput | null;
+
 const converter: ((s: string) => string) | undefined =
   typeof OpenCC?.Converter === "function" ? OpenCC.Converter({ from: "tw", to: "cn" }) : undefined;
 
@@ -31,7 +41,11 @@ export default function SearchScreen() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textInputRef = useRef<TextInput>(null);
+
+  // flag：上一次搜尋是否有結果（成功）
+  const [lastSearchHadResults, setLastSearchHadResults] = useState(false);
+
+  const textInputRef = useRef<TextInputRef>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
   const { remoteInputEnabled } = useSettingsStore();
@@ -49,27 +63,40 @@ export default function SearchScreen() {
       handleSearch(realMessage);
       clearMessage();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
 
-  const handleSearch = async (term: string) => {
-    let simplifiedTerm = term;
+  const runConverterSafe = (term: string) => {
+    if (!converter) return term;
     try {
-      if (converter) {
-        simplifiedTerm = converter(term);
-      }
+      return converter(term);
     } catch (e) {
       logger.debug("convert failed:", e);
-      simplifiedTerm = term;
+      return term;
     }
+  };
+
+  // 搜尋邏輯：成功時標記 flag；不在此清空 keyword（等待使用者下一次 focus 再清）
+  const handleSearch = async (term?: string) => {
+    const t = typeof term === "string" ? term.trim() : keyword.trim();
+    if (!t) {
+      Keyboard.dismiss();
+      return;
+    }
+
+    const simplifiedTerm = runConverterSafe(t);
 
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
     setResults([]);
+
     try {
       const response = await api.searchVideos(simplifiedTerm);
-      if (response.results.length > 0) {
+
+      if (response?.results?.length > 0) {
         setResults(response.results);
+        setLastSearchHadResults(true); // 成功：下一次 focus 時清空
       } else {
         setError("没有找到相关内容");
       }
@@ -78,7 +105,6 @@ export default function SearchScreen() {
       logger.info("Search failed:", err);
     } finally {
       setLoading(false);
-      setTimeout(() => setKeyword(""), 100); // ✅ 延後清空，保護組字流程
     }
   };
 
@@ -95,7 +121,7 @@ export default function SearchScreen() {
 
   const renderItem = ({ item }: { item: SearchResult; index: number }) => (
     <VideoCard
-      id={item.id.toString()}
+      id={String(item.id)}
       source={item.source}
       title={item.title}
       poster={item.poster}
@@ -114,9 +140,7 @@ export default function SearchScreen() {
           activeOpacity={1}
           style={[
             dynamicStyles.inputContainer,
-            {
-              borderColor: isInputFocused ? Colors.dark.primary : "transparent",
-            },
+            { borderColor: isInputFocused ? Colors.dark.primary : "transparent" },
           ]}
           onPress={() => textInputRef.current?.focus()}
         >
@@ -127,25 +151,50 @@ export default function SearchScreen() {
             placeholderTextColor="#888"
             value={keyword}
             onChangeText={setKeyword}
+            // IME 提交雙保險（TV/手機）
             onEndEditing={({ nativeEvent }) => {
               const term = nativeEvent.text?.trim();
-              if (term) {
-                handleSearch(term);
+              if (term) handleSearch(term);
+            }}
+            onSubmitEditing={({ nativeEvent }) => {
+              const term = nativeEvent?.text?.trim() ?? keyword.trim();
+              if (term) handleSearch(term);
+            }}
+            onFocus={() => {
+              setIsInputFocused(true);
+              // 條件：上一次搜尋成功，且使用者再次點選輸入框 → 立即清空
+              if (lastSearchHadResults) {
+                setKeyword("");
+                setLastSearchHadResults(false);
               }
             }}
-            onFocus={() => setIsInputFocused(true)}
             onBlur={() => setIsInputFocused(false)}
             returnKeyType="search"
+            autoCorrect={false}
+            // RN 新版使用 autoComplete="off"，若你的專案仍是舊版 prop，保持 autoCompleteType 以相容
+            // @ts-expect-error legacy RN prop for some environments
+            autoCompleteType="off"
+            autoComplete="off"
+            underlineColorAndroid="transparent"
+            keyboardType={Platform.OS === "android" && deviceType === "tv" ? "default" : undefined}
           />
         </TouchableOpacity>
-        <StyledButton style={dynamicStyles.searchButton} onPress={() => {
-          const term = keyword.trim();
-          if (term) {
-            handleSearch(term);
-          }
-        }}>
+
+        <StyledButton
+          style={dynamicStyles.searchButton}
+          onPress={() => {
+            const term = keyword.trim();
+            if (term) {
+              handleSearch(term);
+            } else {
+              // 讓 IME 有機會 commit（尤其 TV）
+              textInputRef.current?.blur();
+            }
+          }}
+        >
           <Search size={deviceType === "mobile" ? 20 : 24} color="white" />
         </StyledButton>
+
         {deviceType !== "mobile" && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
             <QrCode size={deviceType === "tv" ? 24 : 20} color="white" />
@@ -168,6 +217,7 @@ export default function SearchScreen() {
           emptyMessage="输入关键词开始搜索"
         />
       )}
+
       <RemoteControlModal />
     </>
   );
@@ -178,9 +228,7 @@ export default function SearchScreen() {
     </ThemedView>
   );
 
-  if (deviceType === "tv") {
-    return content;
-  }
+  if (deviceType === "tv") return content;
 
   return (
     <ResponsiveNavigation>
