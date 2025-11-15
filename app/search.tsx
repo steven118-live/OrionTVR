@@ -51,13 +51,7 @@ export default function SearchScreen() {
     }
   }, [lastMessage, targetPage]);
 
-  const handleSearch = async (searchText?: string) => {
-    const term = typeof searchText === "string" ? searchText : keyword;
-    if (!term.trim()) {
-      Keyboard.dismiss();
-      return;
-    }
-
+  const handleSearch = async (term: string) => {
     let simplifiedTerm = term;
     try {
       if (converter) {
@@ -84,11 +78,9 @@ export default function SearchScreen() {
       logger.info("Search failed:", err);
     } finally {
       setLoading(false);
-      setTimeout(() => setKeyword(""), 100);
+      setTimeout(() => setKeyword(""), 100); // ✅ 延後清空，保護組字流程
     }
   };
-
-  const onSearchPress = () => handleSearch();
 
   const handleQrPress = () => {
     if (!remoteInputEnabled) {
@@ -135,10 +127,10 @@ export default function SearchScreen() {
             placeholderTextColor="#888"
             value={keyword}
             onChangeText={setKeyword}
-            onSubmitEditing={onSearchPress}
-            onKeyPress={({ nativeEvent }) => {
-              if (nativeEvent.key === "Enter") {
-                handleSearch();
+            onEndEditing={({ nativeEvent }) => {
+              const term = nativeEvent.text?.trim();
+              if (term) {
+                handleSearch(term);
               }
             }}
             onFocus={() => setIsInputFocused(true)}
@@ -146,7 +138,12 @@ export default function SearchScreen() {
             returnKeyType="search"
           />
         </TouchableOpacity>
-        <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
+        <StyledButton style={dynamicStyles.searchButton} onPress={() => {
+          const term = keyword.trim();
+          if (term) {
+            handleSearch(term);
+          }
+        }}>
           <Search size={deviceType === "mobile" ? 20 : 24} color="white" />
         </StyledButton>
         {deviceType !== "mobile" && (
