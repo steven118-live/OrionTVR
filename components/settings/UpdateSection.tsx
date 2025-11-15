@@ -6,13 +6,12 @@ import { useUpdateStore } from "@/stores/updateStore";
 // import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 
 export function UpdateSection() {
-  const {
-    currentVersion,
-    upstreamVersion,
-    remoteVersion,
-    updateAvailable,
-    downloading,
-    downloadProgress,
+  const { 
+    currentVersion, 
+    remoteVersion, 
+    updateAvailable, 
+    downloading, 
+    downloadProgress, 
     checkForUpdate,
     isLatestVersion,
     error
@@ -31,14 +30,14 @@ export function UpdateSection() {
 
   return (
     <View style={styles.sectionContainer}>
-      <ThemedText style={styles.sectionTitle}>應用更新</ThemedText>
+      <ThemedText style={styles.sectionTitle}>应用更新</ThemedText>
 
       <View style={styles.row}>
-        <ThemedText style={styles.label}>原始碼最新版本</ThemedText>
+        <ThemedText style={styles.label}>原始码最新版本</ThemedText>
         <ThemedText style={styles.value}>Rev{upstreamVersion || 'x.x.xx.'}</ThemedText>
       </View>
       <View style={styles.row}>
-        <ThemedText style={styles.label}>目前使用版本</ThemedText>
+        <ThemedText style={styles.label}>当前版本</ThemedText>
         <ThemedText style={styles.value}>Rev{currentVersion}</ThemedText>
       </View>
 
@@ -51,21 +50,21 @@ export function UpdateSection() {
 
       {isLatestVersion && remoteVersion && (
         <View style={styles.row}>
-          <ThemedText style={styles.label}>狀態</ThemedText>
+          <ThemedText style={styles.label}>状态</ThemedText>
           <ThemedText style={[styles.value, styles.latestVersion]}>已是最新版本</ThemedText>
         </View>
       )}
 
       {error && (
         <View style={styles.row}>
-          <ThemedText style={styles.label}>檢查結果</ThemedText>
+          <ThemedText style={styles.label}>检查结果</ThemedText>
           <ThemedText style={[styles.value, styles.errorText]}>{error}</ThemedText>
         </View>
       )}
 
       {downloading && (
         <View style={styles.row}>
-          <ThemedText style={styles.label}>下載進度</ThemedText>
+          <ThemedText style={styles.label}>下载进度</ThemedText>
           <ThemedText style={styles.value}>{downloadProgress}%</ThemedText>
         </View>
       )}
@@ -75,14 +74,14 @@ export function UpdateSection() {
           {checking ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <ThemedText style={styles.buttonText}>檢查更新</ThemedText>
+            <ThemedText style={styles.buttonText}>检查更新</ThemedText>
           )}
         </StyledButton>
       </View>
 
       {/* {UPDATE_CONFIG.AUTO_CHECK && (
         <ThemedText style={styles.hint}>
-          自動檢查更新已開啟每{UPDATE_CONFIG.CHECK_INTERVAL / (60 * 60 * 1000)}小時檢查一次
+          自动检查更新已开启，每{UPDATE_CONFIG.CHECK_INTERVAL / (60 * 60 * 1000)}小时检查一次
         </ThemedText>
       )} */}
     </View>
@@ -135,13 +134,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 16,
-    justifyContent: "center", // 居中對齊
+    justifyContent: "center", // 居中对齐
     alignItems: "center",
   },
   button: {
     width: "90%",
     ...(Platform.isTV && {
-      // TV 平台焦點樣式
+      // TV平台焦点样式
       borderWidth: 2,
       borderColor: "transparent",
     }),

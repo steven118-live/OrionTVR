@@ -28,15 +28,15 @@ export interface Category {
 
 const initialCategories: Category[] = [
   { title: "最近播放", type: "record" },
-  { title: "熱門劇集", type: "tv", tag: "熱門" },
-  { title: "電視劇", type: "tv", tags: ["國產劇", "美劇", "英劇", "韓劇", "日劇", "港劇", "紀錄片"] },
-  { title: "動漫", type: "tv", tags: ["日本動畫", "國產動畫", "歐美動畫"] },
-  { title: "電影", type: "movie", tags: ["熱門", "最新", "經典", "豆瓣高分", "冷門佳片", "華語", "歐美", "韓國", "日本", "動作", "喜劇", "愛情", "科幻", "懸疑", "恐怖"] },
-  { title: "綜藝", type: "tv", tag: "綜藝" },
+  { title: "热门剧集", type: "tv", tag: "热门" },
+  { title: "电视剧", type: "tv", tags: ["国产剧", "美剧", "英剧", "韩剧", "日剧", "港剧", "纪录片"] },
+  { title: "动漫", type: "tv", tags: ["日本动画", "国产动画", "欧美动画"] },
+  { title: "电影", type: "movie", tags: ["热门", "最新", "经典", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本", "动作", "喜剧", "爱情", "科幻", "悬疑", "恐怖"] },
+  { title: "综艺", type: "tv", tag: "综艺" },
   { title: "豆瓣 Top250", type: "movie", tag: "top250" },
 ];
 
-// 新增快取項介面
+// 添加缓存项接口
 interface CacheItem {
   data: RowItem[];
   timestamp: number;
@@ -44,9 +44,9 @@ interface CacheItem {
   hasMore: boolean;
 }
 
-const CACHE_EXPIRE_TIME = 5 * 60 * 1000; // 5分鐘過期
-const MAX_CACHE_SIZE = 10; // 最大快取容量
-const MAX_ITEMS_PER_CACHE = 40; // 每個快取最大條目數
+const CACHE_EXPIRE_TIME = 5 * 60 * 1000; // 5分钟过期
+const MAX_CACHE_SIZE = 10; // 最大缓存容量
+const MAX_ITEMS_PER_CACHE = 40; // 每个缓存最大条目数
 
 const getCacheKey = (category: Category) => {
   return `${category.type || 'unknown'}-${category.title}-${category.tag || ''}`;
@@ -72,7 +72,7 @@ interface HomeState {
   clearError: () => void;
 }
 
-// 記憶體快取，應用生命週期內有效
+// 内存缓存，应用生命周期内有效
 const dataCache = new Map<string, CacheItem>();
 
 const useHomeStore = create<HomeState>((set, get) => ({
@@ -92,14 +92,14 @@ const useHomeStore = create<HomeState>((set, get) => ({
     const { selectedCategory } = get();
     const cacheKey = getCacheKey(selectedCategory);
 
-    // 最近播放不快取，始終即時取得
+    // 最近播放不缓存，始终实时获取
     if (selectedCategory.type === 'record') {
       set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
       await get().loadMoreData();
       return;
     }
 
-    // 檢查快取
+    // 检查缓存
     if (dataCache.has(cacheKey) && isValidCache(dataCache.get(cacheKey)!)) {
       const cachedData = dataCache.get(cacheKey)!;
       set({
@@ -169,40 +169,40 @@ const useHomeStore = create<HomeState>((set, get) => ({
         const cacheKey = getCacheKey(selectedCategory);
 
         if (pageStart === 0) {
-          // 清理過期快取
+          // 清理过期缓存
           for (const [key, value] of dataCache.entries()) {
             if (!isValidCache(value)) {
               dataCache.delete(key);
             }
           }
 
-          // 如果快取太大，刪除最舊的項
+          // 如果缓存太大，删除最旧的项
           if (dataCache.size >= MAX_CACHE_SIZE) {
             const oldestKey = Array.from(dataCache.keys())[0];
             dataCache.delete(oldestKey);
           }
 
-          // 限制快取的資料條目數，但不限制顯示的資料
+          // 限制缓存的数据条目数，但不限制显示的数据
           const cacheItems = newItems.slice(0, MAX_ITEMS_PER_CACHE);
 
-          // 儲存新快取
+          // 存储新缓存
           dataCache.set(cacheKey, {
             data: cacheItems,
             timestamp: Date.now(),
             type: selectedCategory.type,
-            hasMore: true // 始終為 true，因為我們允許繼續加載
+            hasMore: true // 始终为 true，因为我们允许继续加载
           });
 
           set({
-            contentData: newItems, // 使用完整的新資料
+            contentData: newItems, // 使用完整的新数据
             pageStart: newItems.length,
             hasMore: result.list.length !== 0,
           });
         } else {
-          // 增量加載時更新快取
+          // 增量加载时更新缓存
           const existingCache = dataCache.get(cacheKey);
           if (existingCache) {
-            // 只有當快取資料少於最大限制時才更新快取
+            // 只有当缓存数据少于最大限制时才更新缓存
             if (existingCache.data.length < MAX_ITEMS_PER_CACHE) {
               const updatedData = [...existingCache.data, ...newItems];
               const limitedCacheData = updatedData.slice(0, MAX_ITEMS_PER_CACHE);
@@ -210,12 +210,12 @@ const useHomeStore = create<HomeState>((set, get) => ({
               dataCache.set(cacheKey, {
                 ...existingCache,
                 data: limitedCacheData,
-                hasMore: true // 始終為 true，因為我們允許繼續加載
+                hasMore: true // 始终为 true，因为我们允许继续加载
               });
             }
           }
 
-          // 更新狀態時使用所有資料
+          // 更新状态时使用所有数据
           set((state) => ({
             contentData: [...state.contentData, ...newItems],
             pageStart: state.pageStart + newItems.length,
@@ -223,28 +223,28 @@ const useHomeStore = create<HomeState>((set, get) => ({
           }));
         }
       } else if (selectedCategory.tags) {
-        // 這是容器類別，不載入內容，但清除目前內容
+        // It's a container category, do not load content, but clear current content
         set({ contentData: [], hasMore: false });
       } else {
         set({ hasMore: false });
       }
     } catch (err: any) {
-      let errorMessage = "載入失敗，請重試";
+      let errorMessage = "加载失败，请重试";
 
       if (err.message === "API_URL_NOT_SET") {
-        errorMessage = "請點擊右上角設定按鈕，配置您的伺服器地址";
+        errorMessage = "请点击右上角设置按钮，配置您的服务器地址";
       } else if (err.message === "UNAUTHORIZED") {
-        errorMessage = "認證失敗，請重新登入";
+        errorMessage = "认证失败，请重新登录";
       } else if (err.message.includes("Network")) {
-        errorMessage = "網路連線失敗，請檢查網路連線";
+        errorMessage = "网络连接失败，请检查网络连接";
       } else if (err.message.includes("timeout")) {
-        errorMessage = "請求逾時，請檢查網路或伺服器狀態";
+        errorMessage = "请求超时，请检查网络或服务器状态";
       } else if (err.message.includes("404")) {
-        errorMessage = "伺服器 API 路徑不正確，請檢查伺服器設定";
+        errorMessage = "服务器API路径不正确，请检查服务器配置";
       } else if (err.message.includes("500")) {
-        errorMessage = "伺服器內部錯誤，請聯絡管理員";
+        errorMessage = "服务器内部错误，请联系管理员";
       } else if (err.message.includes("403")) {
-        errorMessage = "存取被拒絕，請檢查權限設定";
+        errorMessage = "访问被拒绝，请检查权限设置";
       }
 
       set({ error: errorMessage });
@@ -280,7 +280,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
           loading: false
         });
       } else {
-        // 刪除過期緩存
+        // 删除过期缓存
         if (cachedData) {
           dataCache.delete(cacheKey);
         }
