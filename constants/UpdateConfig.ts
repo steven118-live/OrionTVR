@@ -6,11 +6,11 @@ export const UPDATE_CONFIG = {
   CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
 
   // GitHub相关URL
-  GITHUB_RAW_URL:
-    `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/main/package.json?t=${Date.now()}`,
   ORIONTV_ORG_GITHUB_RAW_URL:
     `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
-  // 获取平台特定的下载URL
+  GITHUB_RAW_URL:
+    `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/main/package.json?t=${Date.now()}`,
+// 获取平台特定的下载URL
   getDownloadUrl(version: string): string {
     return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}.apk`;
   },

@@ -42,7 +42,6 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // flag：上一次搜尋是否有結果（成功）
   const [lastSearchHadResults, setLastSearchHadResults] = useState(false);
 
   const textInputRef = useRef<TextInputRef>(null);
@@ -63,7 +62,6 @@ export default function SearchScreen() {
       handleSearch(realMessage);
       clearMessage();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
 
   const runConverterSafe = (term: string) => {
@@ -76,7 +74,6 @@ export default function SearchScreen() {
     }
   };
 
-  // 搜尋邏輯：成功時標記 flag；不在此清空 keyword（等待使用者下一次 focus 再清）
   const handleSearch = async (term?: string) => {
     const t = typeof term === "string" ? term.trim() : keyword.trim();
     if (!t) {
@@ -96,7 +93,7 @@ export default function SearchScreen() {
 
       if (response?.results?.length > 0) {
         setResults(response.results);
-        setLastSearchHadResults(true); // 成功：下一次 focus 時清空
+        setLastSearchHadResults(true);
       } else {
         setError("没有找到相关内容");
       }
@@ -150,19 +147,22 @@ export default function SearchScreen() {
             placeholder="搜索电影、剧集..."
             placeholderTextColor="#888"
             value={keyword}
-            onChangeText={setKeyword}
-            // IME 提交雙保險（TV/手機）
+            // ⚠️ 移除 onChangeText，避免組字過程送進 state
             onEndEditing={({ nativeEvent }) => {
               const term = nativeEvent.text?.trim();
-              if (term) handleSearch(term);
+              if (term) {
+                setKeyword(term); // commit 後更新 keyword
+              }
             }}
             onSubmitEditing={({ nativeEvent }) => {
-              const term = nativeEvent?.text?.trim() ?? keyword.trim();
-              if (term) handleSearch(term);
+              const term = nativeEvent.text?.trim() ?? keyword.trim();
+              if (term) {
+                setKeyword(term);
+                handleSearch(term);
+              }
             }}
             onFocus={() => {
               setIsInputFocused(true);
-              // 條件：上一次搜尋成功，且使用者再次點選輸入框 → 立即清空
               if (lastSearchHadResults) {
                 setKeyword("");
                 setLastSearchHadResults(false);
@@ -171,9 +171,6 @@ export default function SearchScreen() {
             onBlur={() => setIsInputFocused(false)}
             returnKeyType="search"
             autoCorrect={false}
-            // RN 新版使用 autoComplete="off"，若你的專案仍是舊版 prop，保持 autoCompleteType 以相容
-            // @ts-expect-error legacy RN prop for some environments
-            autoCompleteType="off"
             autoComplete="off"
             underlineColorAndroid="transparent"
             keyboardType={Platform.OS === "android" && deviceType === "tv" ? "default" : undefined}
@@ -187,7 +184,6 @@ export default function SearchScreen() {
             if (term) {
               handleSearch(term);
             } else {
-              // 讓 IME 有機會 commit（尤其 TV）
               textInputRef.current?.blur();
             }
           }}
@@ -276,7 +272,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: isMobile ? 8 : 8,
-      marginRight: deviceType !== "mobile" ? spacing / 2 : 0,
+      marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
     },
     qrButton: {
       width: isMobile ? minTouchTarget : 50,
