@@ -41,6 +41,10 @@ export default function SearchScreen() {
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
+  // 追蹤上一次搜尋是否成功，以及是否已於 refocus 時清過
+  const [lastSearchSuccessful, setLastSearchSuccessful] = useState<boolean | null>(null);
+  const clearedOnRefocusRef = useRef(false);
+
   // 响应式布局配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
@@ -83,11 +87,17 @@ export default function SearchScreen() {
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
         setResults(response.results);
+        setLastSearchSuccessful(true);
+        clearedOnRefocusRef.current = false;
       } else {
+        setResults([]);
         setError("没有找到相关内容");
+        setLastSearchSuccessful(false);
       }
     } catch (err) {
+      setResults([]);
       setError("搜索失败，请稍后重试。");
+      setLastSearchSuccessful(false);
       logger.info("Search failed:", err);
     } finally {
       setLoading(false);
@@ -119,6 +129,26 @@ export default function SearchScreen() {
     />
   );
 
+  // Focus / Blur handlers for IME-safe clear-on-refocus behavior
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+    // 只有當上次搜尋成功且尚未在 refocus 清過時才清空
+    if (lastSearchSuccessful && !clearedOnRefocusRef.current) {
+      setKeyword("");
+      clearedOnRefocusRef.current = true;
+      setLastSearchSuccessful(null);
+    }
+  };
+
+  const handleInputBlur = () => {
+    setIsInputFocused(false);
+    if (lastSearchSuccessful) {
+      clearedOnRefocusRef.current = false;
+    } else {
+      clearedOnRefocusRef.current = true;
+    }
+  };
+
   // 动态样式
   const dynamicStyles = createResponsiveStyles(deviceType, spacing);
 
@@ -143,8 +173,8 @@ export default function SearchScreen() {
             value={keyword}
             onChangeText={setKeyword}
             onSubmitEditing={onSearchPress}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
             returnKeyType="search"
           />
         </TouchableOpacity>
