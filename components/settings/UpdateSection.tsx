@@ -8,6 +8,7 @@ import { useUpdateStore } from "@/stores/updateStore";
 export function UpdateSection() {
   const { 
     currentVersion, 
+    upstreamVersion,
     remoteVersion, 
     updateAvailable, 
     downloading, 
