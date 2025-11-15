@@ -35,7 +35,11 @@ export default function RootLayout() {
   const { checkLoginStatus } = useAuthStore();
   const { checkForUpdate, lastCheckTime } = useUpdateStore();
   const responsiveConfig = useResponsiveLayout();
-  const { refreshPlayRecords, initEpisodeSelection } = useHomeStore();
+  // const { refreshPlayRecords, initEpisodeSelection } = useHomeStore();
+  const _home: any = useHomeStore();
+  const refreshPlayRecords = _home.refreshPlayRecords as any;
+  const initEpisodeSelection = _home.initEpisodeSelection as any;
+
   const apiStatus = useApiConfig();
 
   const hasInitialized = useRef(false); // 初始化鎖
@@ -84,7 +88,8 @@ export default function RootLayout() {
           await refreshPlayRecords();
         } catch (err) {
           logger.warn("播放紀錄刷新失敗", err);
-          useHomeStore.getState().setPlayRecords([]); // fallback 空陣列，確保 UI 不空白
+          // useHomeStore.getState().setPlayRecords([]); // fallback 空陣列，確保 UI 不空白
+          (useHomeStore.getState() as any).setPlayRecords?.([]); // optional call
         } finally {
           initEpisodeSelection(); // 確保初始化選集，不受錯誤影響
         }

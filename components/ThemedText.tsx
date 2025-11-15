@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, type TextProps } from 'react-native';
-import OpenCC from 'opencc-js';
 
 let RNLocalize: any = { getLocales: () => [] };
 try {
@@ -12,6 +11,7 @@ try {
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { useTextStyles } from '@/hooks/useTextStyles';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { convertFastIfCached, convertSafeAsync, shouldSkipConvert } from '@/utils/convertSafe';
 
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
@@ -19,38 +19,31 @@ export type ThemedTextProps = TextProps & {
   type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
 };
 
-const converter = (OpenCC as any).Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
-const convertCache = new Map<string, string>();
-const hasCJK = (s: string) => /[\u4e00-\u9fff]/.test(s);
-const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]/;
+const hasCJK = (s: string) => typeof s === 'string' && /[\u4e00-\u9fff]/.test(s);
 
-function convertString(s: string): string {
-  if (!hasCJK(s)) return s;
-  if (SKIP_PATTERN.test(s)) return s;
-  const cached = convertCache.get(s);
-  if (cached) return cached;
-  try {
-    const converted = typeof converter === 'function' ? converter(s) : s;
-    convertCache.set(s, converted);
-    return converted;
-  } catch {
-    return s;
+function nodeToString(node: React.ReactNode): string {
+  if (node == null) return '';
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeToString).join('');
+  if (React.isValidElement(node)) {
+    return nodeToString((node as React.ReactElement<any>).props?.children);
   }
+  return '';
 }
 
-function convertNode(node: any, shouldConvert: boolean): any {
-  if (!shouldConvert) return node;
-  if (node == null) return node;
-  if (typeof node === 'string') return convertString(node);
-  if (typeof node === 'number') return node;
-  if (Array.isArray(node)) return node.map((n) => convertNode(n, shouldConvert));
+function replaceNodeWithString(node: React.ReactNode, newStr: string): React.ReactNode {
+  if (node == null) return newStr;
+  if (typeof node === 'string' || typeof node === 'number') return newStr;
+  if (Array.isArray(node)) return [newStr];
   if (React.isValidElement(node)) {
-    const child = node.props?.children;
-    if (child === undefined) return node;
-    const newChildren = Array.isArray(child) ? child.map((c) => convertNode(c, shouldConvert)) : convertNode(child, shouldConvert);
-    return React.cloneElement(node, node.props, newChildren);
+    try {
+      return React.cloneElement(node as React.ReactElement<any>, (node as any).props, newStr as React.ReactNode);
+    } catch {
+      return node;
+    }
   }
-  return node;
+  return newStr;
 }
 
 export function ThemedText({
@@ -73,7 +66,7 @@ export function ThemedText({
   const displayPref = settingsStore?.displayLanguagePreference || 'auto';
 
   const deviceLocales = RNLocalize.getLocales?.() || [];
-  const devicePrefSimplified = deviceLocales.some((l) =>
+  const devicePrefSimplified = deviceLocales.some((l: any) =>
     /Hans|CN|Mainland|zh-CN|zh-SG|zh-Hans/i.test(l?.languageTag || l?.language || '')
   );
 
@@ -84,7 +77,50 @@ export function ThemedText({
     return !devicePrefSimplified;
   }, [displayPref, devicePrefSimplified]);
 
-  const convertedChildren = useMemo(() => convertNode(children, shouldConvert), [children, shouldConvert]);
+  const initialDisplay = useMemo<React.ReactNode>(() => {
+    if (!shouldConvert) return children;
+    const s = nodeToString(children);
+    if (!hasCJK(s) || shouldSkipConvert(s)) return children;
+    const fast = convertFastIfCached(s);
+    return fast !== s ? replaceNodeWithString(children, fast) : children;
+  }, [children, shouldConvert]);
+
+  const [displayChildren, setDisplayChildren] = useState<React.ReactNode>(initialDisplay);
+
+  useEffect(() => {
+    if (!shouldConvert) {
+      setDisplayChildren(children);
+      return;
+    }
+
+    let mounted = true;
+    const s = nodeToString(children);
+    if (!hasCJK(s) || shouldSkipConvert(s)) {
+      setDisplayChildren(children);
+      return;
+    }
+
+    convertSafeAsync(s)
+      .then((converted) => {
+        if (!mounted) return;
+        if (converted && converted !== s) {
+          try {
+            setDisplayChildren(replaceNodeWithString(children, converted));
+          } catch {
+            setDisplayChildren(children);
+          }
+        } else {
+          setDisplayChildren(children);
+        }
+      })
+      .catch(() => {
+        if (mounted) setDisplayChildren(children);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [children, shouldConvert]);
 
   return (
     <Text
@@ -99,19 +135,9 @@ export function ThemedText({
       ]}
       {...rest}
     >
-      {convertedChildren}
+      {displayChildren}
     </Text>
   );
 }
 
 export default ThemedText;
-
-export function _prewarmConvert(strs: string[]) {
-  for (const s of strs) {
-    if (!hasCJK(s) || SKIP_PATTERN.test(s)) continue;
-    try {
-      const converted = typeof converter === 'function' ? converter(s) : s;
-      convertCache.set(s, converted);
-    } catch {}
-  }
-}

@@ -20,9 +20,12 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
-// ✅ 引入 opencc-js
+// 引入 opencc-js
 import OpenCC from "opencc-js";
-const converter = OpenCC.Converter({ from: "tw", to: "cn" });
+// const converter = OpenCC.Converter({ from: "tw", to: "cn" });
+
+// const converter: any = typeof OpenCC !== 'undefined' && OpenCC.Converter ? OpenCC.Converter({ from: 'tw', to: 'cn' }) : undefined;
+const converter: any = OpenCC.Converter ? OpenCC.Converter({ from: 'tw', to: 'cn' }) : undefined;
 
 const logger = Logger.withTag('SearchScreen');
 
@@ -60,7 +63,7 @@ export default function SearchScreen() {
       return;
     }
 
-    // ✅ 繁轉簡
+    // 繁轉簡
     const simplifiedTerm = converter(term);
 
     Keyboard.dismiss();

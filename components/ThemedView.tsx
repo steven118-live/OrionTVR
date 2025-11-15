@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, type ViewProps } from 'react-native';
-import OpenCC from 'opencc-js';
 
 let RNLocalize: any = { getLocales: () => [] };
 try {
@@ -11,47 +10,63 @@ try {
 
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { convertFastIfCached, convertSafeAsync, shouldSkipConvert } from '@/utils/convertSafe';
 
 export type ThemedViewProps = ViewProps & {
   lightColor?: string;
   darkColor?: string;
 };
 
-const converter = (OpenCC as any).Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
-const convertCache = new Map<string, string>();
-const hasCJK = (s: string) => /[\u4e00-\u9fff]/.test(s);
-const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]/;
+const hasCJK = (s: string) => typeof s === 'string' && /[\u4e00-\u9fff]/.test(s);
 
-function convertString(s: string): string {
-  if (!hasCJK(s)) return s;
-  if (SKIP_PATTERN.test(s)) return s;
-  const cached = convertCache.get(s);
-  if (cached) return cached;
-  try {
-    const converted = typeof converter === 'function' ? converter(s) : s;
-    convertCache.set(s, converted);
-    return converted;
-  } catch {
-    return s;
+function firstStringChild(children: React.ReactNode): string | null {
+  if (children == null) return null;
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children) && children.length > 0) {
+    for (const c of children) {
+      if (typeof c === 'string') return c;
+      if (React.isValidElement(c) && typeof (c as React.ReactElement<any>).props?.children === 'string') {
+        return (c as React.ReactElement<any>).props.children;
+      }
+    }
   }
+  if (React.isValidElement(children) && typeof (children as React.ReactElement<any>).props?.children === 'string') {
+    return (children as React.ReactElement<any>).props.children;
+  }
+  return null;
 }
 
-function convertNode(node: any, shouldConvert: boolean): any {
-  if (!shouldConvert) return node;
-  if (node == null) return node;
-  if (typeof node === 'string') return convertString(node);
-  if (typeof node === 'number') return node;
-  if (Array.isArray(node)) return node.map((n) => convertNode(n, shouldConvert));
-  if (React.isValidElement(node)) {
-    const child = node.props?.children;
-    if (child === undefined) return node;
-    const newChildren = Array.isArray(child) ? child.map((c) => convertNode(c, shouldConvert)) : convertNode(child, shouldConvert);
-    return React.cloneElement(node, node.props, newChildren);
+function replaceFirstStringChild(children: React.ReactNode, newStr: string): React.ReactNode {
+  if (children == null) return children;
+  if (typeof children === 'string' || typeof children === 'number') return newStr;
+  if (Array.isArray(children) && children.length > 0) {
+    const out = children.slice();
+    for (let i = 0; i < out.length; i++) {
+      if (typeof out[i] === 'string' || typeof out[i] === 'number') {
+        out[i] = newStr;
+        return out;
+      }
+      if (React.isValidElement(out[i]) && typeof (out[i] as React.ReactElement<any>).props?.children === 'string') {
+        try {
+          return out.map((it, idx) => (idx === i ? React.cloneElement(it as React.ReactElement<any>, (it as any).props, newStr) : it));
+        } catch {
+          break;
+        }
+      }
+    }
+    return children;
   }
-  return node;
+  if (React.isValidElement(children) && typeof (children as React.ReactElement<any>).props?.children === 'string') {
+    try {
+      return React.cloneElement(children as React.ReactElement<any>, (children as any).props, newStr);
+    } catch {
+      return children;
+    }
+  }
+  return children;
 }
 
-export default function ThemedView({
+export function ThemedView({
   style,
   lightColor,
   darkColor,
@@ -70,7 +85,7 @@ export default function ThemedView({
   const displayPref = settingsStore?.displayLanguagePreference || 'auto';
 
   const deviceLocales = RNLocalize.getLocales?.() || [];
-  const devicePrefSimplified = deviceLocales.some((l) =>
+  const devicePrefSimplified = deviceLocales.some((l: any) =>
     /Hans|CN|Mainland|zh-CN|zh-SG|zh-Hans/i.test(l?.languageTag || l?.language || '')
   );
 
@@ -81,19 +96,84 @@ export default function ThemedView({
     return !devicePrefSimplified;
   }, [displayPref, devicePrefSimplified]);
 
-  const convertedChildren = useMemo(() => convertNode(children, shouldConvert), [children, shouldConvert]);
-  const convertedLabel = useMemo(
-    () => (typeof accessibilityLabel === 'string' && shouldConvert ? convertString(accessibilityLabel) : accessibilityLabel),
-    [accessibilityLabel, shouldConvert]
-  );
+  const firstChildStr = useMemo(() => firstStringChild(children), [children]);
+  const initialChildDisplay = useMemo<React.ReactNode>(() => {
+    if (!shouldConvert) return children;
+    if (!firstChildStr || !hasCJK(firstChildStr) || shouldSkipConvert(firstChildStr)) return children;
+    const fast = convertFastIfCached(firstChildStr);
+    return fast !== firstChildStr ? replaceFirstStringChild(children, fast) : children;
+  }, [children, firstChildStr, shouldConvert]);
+
+  const initialLabelDisplay = useMemo(() => {
+    if (!shouldConvert) return accessibilityLabel;
+    if (typeof accessibilityLabel !== 'string' || !hasCJK(accessibilityLabel) || shouldSkipConvert(accessibilityLabel)) return accessibilityLabel;
+    const fast = convertFastIfCached(accessibilityLabel);
+    return fast !== accessibilityLabel ? fast : accessibilityLabel;
+  }, [accessibilityLabel, shouldConvert]);
+
+  const [displayChildren, setDisplayChildren] = useState<React.ReactNode>(initialChildDisplay);
+  const [displayLabel, setDisplayLabel] = useState<string | undefined>(initialLabelDisplay as string | undefined);
+
+  useEffect(() => {
+    if (!shouldConvert) {
+      setDisplayChildren(children);
+      setDisplayLabel(accessibilityLabel as string | undefined);
+      return;
+    }
+
+    let mounted = true;
+
+    const s = firstChildStr;
+    if (s && hasCJK(s) && !shouldSkipConvert(s)) {
+      convertSafeAsync(s)
+        .then((converted) => {
+          if (!mounted) return;
+          if (converted && converted !== s) {
+            try {
+              setDisplayChildren(replaceFirstStringChild(children, converted));
+            } catch {
+              setDisplayChildren(children);
+            }
+          } else {
+            setDisplayChildren(children);
+          }
+        })
+        .catch(() => {
+          if (mounted) setDisplayChildren(children);
+        });
+    } else {
+      setDisplayChildren(children);
+    }
+
+    const lab = accessibilityLabel;
+    if (typeof lab === 'string' && hasCJK(lab) && !shouldSkipConvert(lab)) {
+      convertSafeAsync(lab)
+        .then((converted) => {
+          if (!mounted) return;
+          if (converted && converted !== lab) setDisplayLabel(converted);
+          else setDisplayLabel(lab);
+        })
+        .catch(() => {
+          if (mounted) setDisplayLabel(lab);
+        });
+    } else {
+      setDisplayLabel(accessibilityLabel as string | undefined);
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [children, accessibilityLabel, shouldConvert, firstChildStr]);
 
   return (
     <View
       style={[{ backgroundColor }, style]}
-      accessibilityLabel={convertedLabel}
+      accessibilityLabel={displayLabel}
       {...otherProps}
     >
-      {convertedChildren}
+      {displayChildren}
     </View>
   );
 }
+
+export default ThemedView;
