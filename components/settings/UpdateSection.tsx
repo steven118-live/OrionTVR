@@ -35,17 +35,17 @@ export function UpdateSection() {
 
       <View style={styles.row}>
         <ThemedText style={styles.label}>原始码最新版本</ThemedText>
-        <ThemedText style={styles.value}>Rev{upstreamVersion || 'x.x.xx.'}</ThemedText>
+        <ThemedText style={styles.value}>v{upstreamVersion || 'x.x.xx.'}</ThemedText>
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>当前版本</ThemedText>
-        <ThemedText style={styles.value}>Rev{currentVersion}</ThemedText>
+        <ThemedText style={styles.value}>v{currentVersion}</ThemedText>
       </View>
 
       {updateAvailable && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>最新版本</ThemedText>
-          <ThemedText style={[styles.value, styles.newVersion]}>Rev{remoteVersion}</ThemedText>
+          <ThemedText style={[styles.value, styles.newVersion]}>v{remoteVersion}</ThemedText>
         </View>
       )}
 
