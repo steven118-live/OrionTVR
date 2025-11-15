@@ -6,13 +6,13 @@ import { useUpdateStore } from "@/stores/updateStore";
 // import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 
 export function UpdateSection() {
-  const { 
-    currentVersion, 
+  const {
+    currentVersion,
     upstreamVersion,
-    remoteVersion, 
-    updateAvailable, 
-    downloading, 
-    downloadProgress, 
+    remoteVersion,
+    updateAvailable,
+    downloading,
+    downloadProgress,
     checkForUpdate,
     isLatestVersion,
     error
@@ -35,17 +35,17 @@ export function UpdateSection() {
 
       <View style={styles.row}>
         <ThemedText style={styles.label}>原始碼最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{upstreamVersion || 'x.x.xx.'}</ThemedText>
+        <ThemedText style={styles.value}>Rev{upstreamVersion || 'x.x.xx.'}</ThemedText>
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>目前使用版本</ThemedText>
-        <ThemedText style={styles.value}>v{currentVersion}</ThemedText>
+        <ThemedText style={styles.value}>Rev{currentVersion}</ThemedText>
       </View>
 
       {updateAvailable && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>最新版本</ThemedText>
-          <ThemedText style={[styles.value, styles.newVersion]}>v{remoteVersion}</ThemedText>
+          <ThemedText style={[styles.value, styles.newVersion]}>Rev{remoteVersion}</ThemedText>
         </View>
       )}
 
@@ -82,7 +82,7 @@ export function UpdateSection() {
 
       {/* {UPDATE_CONFIG.AUTO_CHECK && (
         <ThemedText style={styles.hint}>
-          自动检查更新已开启，每{UPDATE_CONFIG.CHECK_INTERVAL / (60 * 60 * 1000)}小时检查一次
+          自動檢查更新已開啟每{UPDATE_CONFIG.CHECK_INTERVAL / (60 * 60 * 1000)}小時檢查一次
         </ThemedText>
       )} */}
     </View>
@@ -135,13 +135,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 16,
-    justifyContent: "center", // 居中对齐
+    justifyContent: "center", // 居中對齊
     alignItems: "center",
   },
   button: {
     width: "90%",
     ...(Platform.isTV && {
-      // TV平台焦点样式
+      // TV 平台焦點樣式
       borderWidth: 2,
       borderColor: "transparent",
     }),

@@ -17,7 +17,7 @@ interface VersionInfo {
 }
 
 /**
- * 只在 Android 平台使用的常量（iOS 不会走到下载/安装流程）
+ * 只在 Android 平台使用的常量（iOS 不會走到下載/安裝流程）
  */
 const ANDROID_MIME_TYPE = 'application/vnd.android.package-archive';
 
@@ -31,7 +31,7 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  1️⃣ 远程版本检查（保持不变，只是把 fetch 包装成 async/await）
+   *  1️⃣ 遠端版本檢查（保持不變，只是把 fetch 包裝成 async/await）
    * --------------------------------------------------------------- */
   async checkVersion(): Promise<VersionInfo> {
     const maxRetries = 3;
@@ -68,21 +68,21 @@ class UpdateService {
         if (attempt === maxRetries) {
           Toast.show({
             type: 'error',
-            text1: '检查更新失败',
-            text2: '无法获取版本信息，请检查网络',
+            text1: '檢查更新失敗',
+            text2: '無法獲取版本訊息,請檢查網路',
           });
           throw e;
         }
-        // 指数退避
+        // 指數退避
         await new Promise(r => setTimeout(r, 2_000 * attempt));
       }
     }
-    // 这句永远走不到，仅为 TypeScript 报错
+    // 這句永遠走不到，僅為 TypeScript 報錯
     throw new Error('Unexpected');
   }
 
   /** --------------------------------------------------------------
-   *  2️⃣ 清理旧的 APK 文件（使用 expo-file-system 的 API）
+   *  2️⃣ 清理舊的 APK 檔案（使用 expo-file-system 的 API）
    * --------------------------------------------------------------- */
   private async cleanOldApkFiles(): Promise<void> {
     try {
@@ -101,7 +101,7 @@ class UpdateService {
         return numB - numA; // 倒序（最新在前）
       });
 
-      const stale = sorted.slice(2); // 保留最新的两个
+      const stale = sorted.slice(2); // 保留最新的兩個
       for (const file of stale) {
         const path = `${dirUri}${file}`;
         try {
@@ -117,7 +117,7 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  3️⃣ 下载 APK（使用 expo-file-system 的下载 API）
+   *  3️⃣ 下載 APK（使用 expo-file-system 的下載 API）
    * --------------------------------------------------------------- */
   async downloadApk(
     url: string,
@@ -132,13 +132,13 @@ class UpdateService {
         const fileName = `OrionTV_v${timestamp}.apk`;
         const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-        // expo-file-system 把下载进度回调参数统一为 `{totalBytesWritten, totalBytesExpectedToWrite}`
+        // expo-file-system 把下載進度回調參數統一為 `{totalBytesWritten, totalBytesExpectedToWrite}`
         const downloadResumable = FileSystem.createDownloadResumable(
           url,
           fileUri,
           {
-            // Android 需要在 AndroidManifest 中声明 INTERNET、WRITE_EXTERNAL_STORAGE (API 33+ 使用 MANAGE_EXTERNAL_STORAGE)
-            // 这里不使用系统下载管理器，因为我们想自己控制进度回调。
+            // Android 需要在 AndroidManifest 中宣告 INTERNET、WRITE_EXTERNAL_STORAGE (API 33+ 使用 MANAGE_EXTERNAL_STORAGE)
+            // 這裡不使用系統下載管理器，因為我們想自己控制進度回調。
           },
           progress => {
             if (onProgress && progress.totalBytesExpectedToWrite) {
@@ -162,33 +162,33 @@ class UpdateService {
         if (attempt === maxRetries) {
           Toast.show({
             type: 'error',
-            text1: '下载失败',
-            text2: 'APK 下载出现错误，请检查网络',
+            text1: '下載失敗',
+            text2: 'APK 下載出現錯誤，請檢查網絡',
           });
           throw e;
         }
-        // 指数退避
+        // 指數退避
         await new Promise(r => setTimeout(r, 3_000 * attempt));
       }
     }
-    // 同上，理论不会到这里
+    // 同上，理論不會到這裡
     throw new Error('Download failed');
   }
 
   /** --------------------------------------------------------------
-   *  4️⃣ 安装 APK（只在 Android 可用，使用 expo-intent-launcher）
+   *  4️⃣ 安裝 APK（只在 Android 可用，使用 expo-intent-launcher）
    * --------------------------------------------------------------- */
   async installApk(fileUri: string): Promise<void> {
-    // ① 先确认文件存在
+    // ① 先確認檔案存在
     const exists = await FileSystem.getInfoAsync(fileUri);
     if (!exists.exists) {
       throw new Error(`APK not found at ${fileUri}`);
     }
 
-    // ② 把 file:// 转成 content://，Expo‑FileSystem 已经实现了 FileProvider
+    // ② 把 file:// 轉成 content://，Expo‑FileSystem 已經實作了 FileProvider
     const contentUri = await FileSystem.getContentUriAsync(fileUri);
 
-    // ③ 只在 Android 里执行
+    // ③ 只在 Android 裡執行
     if (Platform.OS === 'android') {
       try {
         // FLAG_ACTIVITY_NEW_TASK = 0x10000000 (1)
@@ -196,46 +196,46 @@ class UpdateService {
         const flags = 1 | 0x00000010;   // 1 | 16
 
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-          data: contentUri,          // 必须是 content://
+          data: contentUri,          // 必須是 content://
           type: ANDROID_MIME_TYPE,   // application/vnd.android.package-archive
           flags,
         });
       } catch (e: any) {
-        // 统一错误提示
+        // 統一錯誤提示
         if (e.message?.includes('Activity not found')) {
           Toast.show({
             type: 'error',
-            text1: '安装失败',
-            text2: '系统没有找到可以打开 APK 的应用，请检查系统设置',
+            text1: '安裝失敗',
+            text2: '系統沒有找到可以打開 APK 的應用，請檢查系統設定',
           });
         } else if (e.message?.includes('permission')) {
           Toast.show({
             type: 'error',
-            text1: '安装失败',
-            text2: '请在设置里允许“未知来源”安装',
+            text1: '安裝失敗',
+            text2: '請在設定裡允許「未知來源」安裝',
           });
         } else {
           Toast.show({
             type: 'error',
-            text1: '安装失败',
-            text2: '未知错误，请稍后重试',
+            text1: '安裝失敗',
+            text2: '未知錯誤，請稍後重試',
           });
         }
         throw e;
       }
     } else {
-      // iOS 设备不支持直接安装 APK
+      // iOS 裝置不支援直接安裝 APK
       Toast.show({
         type: 'error',
-        text1: '安装失败',
-        text2: 'iOS 设备无法直接安装 APK',
+        text1: '安裝失敗',
+        text2: 'iOS 裝置無法直接安裝 APK',
       });
       throw new Error('APK install not supported on iOS');
     }
   }
 
   /** --------------------------------------------------------------
-   *  5️⃣ 版本比对工具（保持原来的实现）
+   *  5️⃣ 版本比對工具（保持原來的實作）
    * --------------------------------------------------------------- */
   compareVersions(v1: string, v2: string): number {
     const p1 = v1.split('.').map(Number);
@@ -256,5 +256,5 @@ class UpdateService {
   }
 }
 
-/* 单例导出 */
+/* 單例導出 */
 export default UpdateService.getInstance();
