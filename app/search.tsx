@@ -127,15 +127,16 @@ export default function SearchScreen() {
       Keyboard.dismiss();
       return;
     }
-    // 搜索前：繁→簡
-    // const simplifiedTerm = convertTw2CnFastInline(term);
-    const simplifiedTerm = await convertTw2CnSafeAsync(term);
 
     // const term = simplifiedTerm
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
     try {
+      // 搜索前：繁→簡
+      // const simplifiedTerm = convertTw2CnFastInline(term);
+      // const simplifiedTerm = await convertTw2CnSafeAsync(term);
+      const simplifiedTerm = tw2cn(term);
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
         setResults(response.results);
