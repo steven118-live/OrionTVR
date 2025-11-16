@@ -20,8 +20,75 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
-// 引入轉換工具
-import { convertTw2CnFast, convertCn2TwFast } from "@/utils/convertSafe";
+import OpenCC from 'opencc-js';
+
+
+// 匹配：URL | Rev### | email | 特殊字元 | Bopomofo (注音) Unicode 範圍
+const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]|\u3100-\u312F|\u31A0-\u31BF/;
+
+type ConverterFunc = (s: string) => string;
+
+// 建立兩個方向的 converter
+const cn2tw: ConverterFunc =
+  (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
+
+const tw2cn: ConverterFunc =
+  (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'tw', to: 'cn' }) : (s: string) => s;
+
+const convertCache = new Map<string, string>();
+
+function shouldSkipConvert(s?: string | null): boolean {
+  if (!s) return true;
+  if (typeof s !== 'string') return true;
+  if (!s.trim()) return true;
+  if (SKIP_PATTERN.test(s)) return true;
+  return false;
+}
+
+/** 繁→簡（快速快取） */
+function convertTw2CnFastInline(s: string): string {
+  if (!s) return s;
+  const cached = convertCache.get(`tw2cn:${s}`);
+  if (cached) return cached;
+  if (shouldSkipConvert(s)) return s;
+  try {
+    const out = tw2cn(s);
+    if (out && out !== s) convertCache.set(`tw2cn:${s}`, out);
+    return out;
+  } catch {
+    return s;
+  }
+}
+/** 簡→繁（快速快取） */
+function convertCn2TwFastInline(s: string): string {
+  if (!s) return s;
+  const cached = convertCache.get(`cn2tw:${s}`);
+  if (cached) return cached;
+  if (shouldSkipConvert(s)) return s;
+  try {
+    const out = cn2tw(s);
+    if (out && out !== s) convertCache.set(`cn2tw:${s}`, out);
+    return out;
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * 非同步安全轉換（繁→簡）
+ */
+async function convertTw2CnSafeAsync(s: string): Promise<string> {
+  if (!s) return s;
+  if (shouldSkipConvert(s)) return s;
+  try {
+    const out = tw2cn(s);
+    if (out && out !== s) convertCache.set(`tw2cn:${s}`, out);
+    return out;
+  } catch {
+    return s;
+  }
+}
+
 
 const logger = Logger.withTag('SearchScreen');
 
@@ -52,6 +119,15 @@ export default function SearchScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
 
+  // 離開 Search 時清掉快取
+  useEffect(() => {
+    return () => {
+      convertCache.clear();
+      setKeyword("");
+      textInputRef.current?.blur();
+    };
+  }, []);
+
   const handleSearch = async (searchText?: string) => {
     const term = typeof searchText === "string" ? searchText : keyword;
     if (!term.trim()) {
@@ -63,7 +139,8 @@ export default function SearchScreen() {
     setError(null);
     try {
       // 搜索前：繁→簡
-      const simplifiedTerm = convertTw2CnFast(term);
+      const simplifiedTerm = convertTw2CnFastInline(term);
+      // const simplifiedTerm = convertTw2CnSafeAsyncInline(term);
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
         setResults(response.results);
@@ -96,10 +173,10 @@ export default function SearchScreen() {
       id={item.id.toString()}
       source={item.source}
       // 顯示前：簡→繁
-      title={convertCn2TwFast(item.title ?? "")}
+      title={convertCn2TwFastInline(item.title ?? "")}
       poster={item.poster}
       year={item.year}
-      sourceName={convertCn2TwFast(item.source_name ?? "")}
+      sourceName={convertCn2TwFastInline(item.source_name ?? "")}
       api={api}
     />
   );
