@@ -11,7 +11,7 @@ try {
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { useTextStyles } from '@/hooks/useTextStyles';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { convertFastIfCached, convertSafeAsync, shouldSkipConvert } from '@/utils/convertSafe';
+import { convertCn2TwFast, convertCn2TwSafeAsync, shouldSkipConvert } from '@/utils/convertSafe';
 
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
@@ -81,7 +81,7 @@ export function ThemedText({
     if (!shouldConvert) return children;
     const s = nodeToString(children);
     if (!hasCJK(s) || shouldSkipConvert(s)) return children;
-    const fast = convertFastIfCached(s);
+    const fast = convertCn2TwFast(s);
     return fast !== s ? replaceNodeWithString(children, fast) : children;
   }, [children, shouldConvert]);
 
@@ -100,8 +100,8 @@ export function ThemedText({
       return;
     }
 
-    convertSafeAsync(s)
-      .then((converted) => {
+    convertCn2TwSafeAsync(s)
+      .then((converted: string) => {
         if (!mounted) return;
         if (converted && converted !== s) {
           try {
