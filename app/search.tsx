@@ -27,7 +27,7 @@ import OpenCC from 'opencc-js';
 const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]|\u3100-\u312F|\u31A0-\u31BF/;
 
 type ConverterFunc = (s: string) => string;
-
+//let ConverterFunc: (s: string) => string = (s) => s;
 // 建立兩個方向的 converter
 const cn2tw: ConverterFunc =
   (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
@@ -54,20 +54,6 @@ function convertTw2CnFastInline(s: string): string {
   try {
     const out = tw2cn(s);
     if (out && out !== s) convertCache.set(`tw2cn:${s}`, out);
-    return out;
-  } catch {
-    return s;
-  }
-}
-/** 簡→繁（快速快取） */
-function convertCn2TwFastInline(s: string): string {
-  if (!s) return s;
-  const cached = convertCache.get(`cn2tw:${s}`);
-  if (cached) return cached;
-  if (shouldSkipConvert(s)) return s;
-  try {
-    const out = cn2tw(s);
-    if (out && out !== s) convertCache.set(`cn2tw:${s}`, out);
     return out;
   } catch {
     return s;
@@ -118,15 +104,22 @@ export default function SearchScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
+  // useEffect(() => {
+  //   // Focus the text input when the screen loads
+  //   const timer = setTimeout(() => {
+  //     textInputRef.current?.focus();
+  //   }, 200);
+  //   return () => clearTimeout(timer);
+  // }, []);
 
-  // 離開 Search 時清掉快取
-  useEffect(() => {
-    return () => {
-      convertCache.clear();
-      setKeyword("");
-      textInputRef.current?.blur();
-    };
-  }, []);
+  // // 離開 Search 時清掉快取
+  // useEffect(() => {
+  //   return () => {
+  //     convertCache.clear();
+  //     setKeyword("");
+  //     textInputRef.current?.blur();
+  //   };
+  // }, []);
 
   const handleSearch = async (searchText?: string) => {
     const term = typeof searchText === "string" ? searchText : keyword;
@@ -134,13 +127,15 @@ export default function SearchScreen() {
       Keyboard.dismiss();
       return;
     }
+    // 搜索前：繁→簡
+    // const simplifiedTerm = convertTw2CnFastInline(term);
+    const simplifiedTerm = await convertTw2CnSafeAsync(term);
+
+    // const term = simplifiedTerm
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
     try {
-      // 搜索前：繁→簡
-      const simplifiedTerm = convertTw2CnFastInline(term);
-      // const simplifiedTerm = convertTw2CnSafeAsyncInline(term);
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
         setResults(response.results);
@@ -172,11 +167,10 @@ export default function SearchScreen() {
     <VideoCard
       id={item.id.toString()}
       source={item.source}
-      // 顯示前：簡→繁
-      title={convertCn2TwFastInline(item.title ?? "")}
+      title={item.title}
       poster={item.poster}
       year={item.year}
-      sourceName={convertCn2TwFastInline(item.source_name ?? "")}
+      sourceName={item.source_name}
       api={api}
     />
   );
