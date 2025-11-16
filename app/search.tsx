@@ -67,6 +67,16 @@ export default function SearchScreen() {
     }
   }, [lastMessage, targetPage]);
 
+  const runConverterSafe = (term: string) => {
+    if (!converter) return term;
+    try {
+      return converter(term);
+    } catch (e) {
+      logger.debug("convert failed:", e);
+      return term;
+    }
+  };
+
   const handleSearch = async (searchText?: string) => {
     const term = typeof searchText === "string" ? searchText : keyword;
     if (!term.trim()) {
@@ -77,7 +87,7 @@ export default function SearchScreen() {
     // 繁轉簡 with safe converter
     let simplifiedTerm = term;
     try {
-      const simplifiedTerm = converter(term) ?? term;
+      const simplifiedTerm = runConverterSafe(term)?? term;
     } catch {
       simplifiedTerm = term;
     }
