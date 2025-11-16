@@ -21,25 +21,10 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from "@/utils/Logger";
 import OpenCC from "opencc-js";
 
-// Minimal: require opencc-js at runtime to avoid missing declaration file during TS check.
-// If require fails or the module is absent, fallback to identity converter.
-let converter: (s: string) => string = (s) => s;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const OpenCC: any = require("opencc-js");
-  // guard common shapes: OpenCC.Converter or OpenCC (UMD default)
-  if (OpenCC && typeof OpenCC.Converter === "function") {
-    converter = OpenCC.Converter({ from: "tw", to: "cn" });
-  } else if (OpenCC && typeof OpenCC === "function") {
-    // some builds export a function directly
-    converter = OpenCC({ from: "tw", to: "cn" });
-  } else if (OpenCC && OpenCC.default && typeof OpenCC.default.Converter === "function") {
-    converter = OpenCC.default.Converter({ from: "tw", to: "cn" });
-  }
-} catch {
-  // keep identity converter
-}
 
+const converter: ((s: string) => string) | undefined =
+  typeof OpenCC?.Converter === "function" ? OpenCC.Converter({ from: "tw", to: "cn" }) : undefined;
+// const converter = OpenCC.Converter({ from: "tw", to: "cn" });
 const logger = Logger.withTag("SearchScreen");
 
 export default function SearchScreen() {
@@ -87,7 +72,8 @@ export default function SearchScreen() {
     // 繁轉簡 with safe converter
     let simplifiedTerm = term;
     try {
-      const simplifiedTerm = runConverterSafe(term)?? term;
+      const simplifiedTerm = runConverterSafe(term);
+      // const simplifiedTerm = converter(term) ?? term;
     } catch {
       simplifiedTerm = term;
     }
