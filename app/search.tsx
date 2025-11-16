@@ -136,8 +136,6 @@ export default function SearchScreen() {
       // 搜索前：繁→簡
       // const simplifiedTerm = convertTw2CnFastInline(term);
       // const simplifiedTerm = await convertTw2CnSafeAsync(term);
-      // const simplifiedTerm = tw2cn(term);
-      // 繁轉簡 with safe converter
       const simplifiedTerm = tw2cn(term) ?? term;
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
