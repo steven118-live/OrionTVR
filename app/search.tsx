@@ -223,15 +223,18 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
       {/* 浮層選單 */}
       {showBackToSearch && (
         <Modal transparent>
-          <TouchableOpacity
-            style={dynamicStyles.modal}
-            activeOpacity={1}
-            onPress={enableBackdropClose ? () => setShowBackToSearch(false) : undefined}
-          >
-            <View>
+          <View style={dynamicStyles.modal}>
+            {enableBackdropClose && (
+              <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                onPress={() => setShowBackToSearch(false)}
+              />
+            )}
+
+            <View style={dynamicStyles.modalContent}>
               <TouchableOpacity
                 onPress={() => {
-                  textInputRef.current?.focus();
+                  textInputRef.current?.focus?.();
                   setShowBackToSearch(false);
                 }}
               >
@@ -240,7 +243,7 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
 
               <TouchableOpacity
                 onPress={() => {
-                  flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                  flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
                   setShowBackToSearch(false);
                 }}
               >
@@ -251,7 +254,7 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
                 <Text style={dynamicStyles.modalText}>取消</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </View>
         </Modal>
       )}
     </>
@@ -286,12 +289,16 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       paddingTop: deviceType === 'tv' ? 50 : 0,
     },
     modal: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalContent: {
       backgroundColor: "rgba(0,0,0,0.8)",
       padding: 20,
       borderRadius: 8,
       alignItems: "center",
       justifyContent: "center",
-      flex: 1,
     },
     modalText: {
       color: "white",
