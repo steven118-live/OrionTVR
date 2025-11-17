@@ -16,7 +16,6 @@ import { useTVEventHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
-import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { api, SearchResult } from "@/services/api";
 import { Search, QrCode } from "lucide-react-native";
 import { StyledButton } from "@/components/StyledButton";
@@ -25,72 +24,20 @@ import { RemoteControlModal } from "@/components/RemoteControlModal";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/Colors";
-import CustomScrollView from "@/components/CustomScrollView";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
-
 import OpenCC from 'opencc-js';
 
-
-
-type ConverterFunc = (s: string) => string;
-
-const cn2tw: ConverterFunc =
-  (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
-
-const tw2cn: ConverterFunc =
-  (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'tw', to: 'cn' }) : (s: string) => s;
-
-// 匹配：URL | Rev### | email | 特殊字元 | Bopomofo (注音) Unicode 範圍
-// const SKIP_PATTERN = /https?:\/\/|\bRev\d+\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|[`<>]|\u3100-\u312F|\u31A0-\u31BF/;
-// const convertCache = new Map<string, string>();
-
-// function shouldSkipConvert(s?: string | null): boolean {
-//   if (!s) return true;
-//   if (typeof s !== 'string') return true;
-//   if (!s.trim()) return true;
-//   if (SKIP_PATTERN.test(s)) return true;
-//   return false;
-// }
-
-// /** 繁→簡（快速快取） */
-// function convertTw2CnFastInline(s: string): string {
-//   if (!s) return s;
-//   const cached = convertCache.get(`tw2cn:${s}`);
-//   if (cached) return cached;
-//   if (shouldSkipConvert(s)) return s;
-//   try {
-//     const out = tw2cn(s);
-//     if (out && out !== s) convertCache.set(`tw2cn:${s}`, out);
-//     return out;
-//   } catch {
-//     return s;
-//   }
-// }
-
-// /**
-//  * 非同步安全轉換（繁→簡）
-//  */
-// async function convertTw2CnSafeAsync(s: string): Promise<string> {
-//   if (!s) return s;
-//   if (shouldSkipConvert(s)) return s;
-//   try {
-//     const out = tw2cn(s);
-//     if (out && out !== s) convertCache.set(`tw2cn:${s}`, out);
-//     return out;
-//   } catch {
-//     return s;
-//   }
-// }
-
+const cn2tw = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
+const tw2cn = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'tw', to: 'cn' }) : (s: string) => s;
 
 const logger = Logger.withTag('SearchScreen');
 
-export default function SearchScreen() {
+export default function SearchScreen({ enableBackdropClose = true }: { enableBackdropClose?: boolean }) {
   const [keyword, setKeyword] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -110,22 +57,35 @@ export default function SearchScreen() {
   const flatListRef = useRef<FlatList<SearchResult>>(null);
   const [showBackToSearch, setShowBackToSearch] = useState(false);
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
-  if (deviceType === 'tv') {
-    useTVEventHandler((evt) => {
-      if (evt && evt.eventType === "up") {
+
+  // ✅ 正確的 TV 長按向上事件處理
+  useEffect(() => {
+    if (!Platform.isTV) return;
+
+    const handler = (evt: { eventType?: string } | null) => {
+      if (!evt) return;
+      if (evt.eventType === "up") {
         if (!pressTimer.current) {
           pressTimer.current = setTimeout(() => {
             setShowBackToSearch(true);
-          }, 3000); // 長按 3 秒
+          }, 2000);
         }
-      } else if (evt && evt.eventType === "upRelease") {
+      } else if (evt.eventType === "upRelease") {
         if (pressTimer.current) {
           clearTimeout(pressTimer.current);
           pressTimer.current = null;
         }
       }
-    });
-  }
+    };
+
+    useTVEventHandler(handler);
+    return () => {
+      if (pressTimer.current) {
+        clearTimeout(pressTimer.current);
+        pressTimer.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (lastMessage && targetPage === 'search') {
@@ -133,26 +93,9 @@ export default function SearchScreen() {
       const realMessage = lastMessage.split("_")[0];
       setKeyword(realMessage);
       handleSearch(realMessage);
-      clearMessage(); // Clear the message after processing
+      clearMessage();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
-  // useEffect(() => {
-  //   // Focus the text input when the screen loads
-  //   const timer = setTimeout(() => {
-  //     textInputRef.current?.focus();
-  //   }, 200);
-  //   return () => clearTimeout(timer);
-  // }, []);
-
-  // // 離開 Search 時清掉快取
-  // useEffect(() => {
-  //   return () => {
-  //     convertCache.clear();
-  //     setKeyword("");
-  //     textInputRef.current?.blur();
-  //   };
-  // }, []);
 
   const handleSearch = async (searchText?: string) => {
     const term = typeof searchText === "string" ? searchText : keyword;
@@ -160,15 +103,10 @@ export default function SearchScreen() {
       Keyboard.dismiss();
       return;
     }
-
-    // const term = simplifiedTerm
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
     try {
-      // 搜索前：繁→簡
-      // const simplifiedTerm = convertTw2CnFastInline(term);
-      // const simplifiedTerm = await convertTw2CnSafeAsync(term);
       const simplifiedTerm = tw2cn(term) ?? term;
       const response = await api.searchVideos(simplifiedTerm);
       if (response.results.length > 0) {
@@ -198,15 +136,20 @@ export default function SearchScreen() {
   };
 
   const renderItem = ({ item }: { item: SearchResult }) => (
-    <VideoCard
-      id={item.id.toString()}
-      source={item.source}
-      title={item.title}
-      poster={item.poster}
-      year={item.year}
-      sourceName={item.source_name}
-      api={api}
-    />
+    <TouchableOpacity
+      onLongPress={!Platform.isTV ? () => setShowBackToSearch(true) : undefined}
+      onFocus={Platform.isTV ? () => setShowBackToSearch(true) : undefined}
+    >
+      <VideoCard
+        id={item.id.toString()}
+        source={item.source}
+        title={item.title}
+        poster={item.poster}
+        year={item.year}
+        sourceName={item.source_name}
+        api={api}
+      />
+    </TouchableOpacity>
   );
 
   // 动态样式
@@ -219,9 +162,7 @@ export default function SearchScreen() {
           activeOpacity={1}
           style={[
             dynamicStyles.inputContainer,
-            {
-              borderColor: isInputFocused ? Colors.dark.primary : "transparent",
-            },
+            { borderColor: isInputFocused ? Colors.dark.primary : "transparent" },
           ]}
           onPress={() => textInputRef.current?.focus()}
         >
@@ -241,12 +182,8 @@ export default function SearchScreen() {
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
           <Search size={deviceType === 'mobile' ? 20 : 24} color="white" />
         </StyledButton>
-
         {/* 搜尋中顯示動態放大鏡 */}
-        {loading && (
-          <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginLeft: 8 }} />
-        )}
-
+        {loading && <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginLeft: 8 }} />}
         {deviceType !== 'mobile' && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
             <QrCode size={deviceType === 'tv' ? 24 : 20} color="white" />
@@ -254,6 +191,7 @@ export default function SearchScreen() {
         )}
       </View>
 
+      {/* 搜索結果 */}
       {error ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
@@ -264,11 +202,13 @@ export default function SearchScreen() {
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={5}
+          numColumns={Platform.isTV ? 5 : 3}   // ✅ 動態顯示數量
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           initialNumToRender={10}
           windowSize={5}
           removeClippedSubviews
+          onEndReached={() => setShowBackToSearch(true)}   // ✅ 底部觸發浮層
+          onEndReachedThreshold={0.1}
         />
 
       ) : (
@@ -283,29 +223,35 @@ export default function SearchScreen() {
       {/* 浮層選單 */}
       {showBackToSearch && (
         <Modal transparent>
-          <View style={dynamicStyles.modal}>
-            <TouchableOpacity
-              onPress={() => {
-                textInputRef.current?.focus();
-                setShowBackToSearch(false);
-              }}
-            >
-              <Text style={dynamicStyles.modalText}>回到搜尋列</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={dynamicStyles.modal}
+            activeOpacity={1}
+            onPress={enableBackdropClose ? () => setShowBackToSearch(false) : undefined}
+          >
+            <View>
+              <TouchableOpacity
+                onPress={() => {
+                  textInputRef.current?.focus();
+                  setShowBackToSearch(false);
+                }}
+              >
+                <Text style={dynamicStyles.modalText}>回到搜尋列</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => {
-                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                setShowBackToSearch(false);
-              }}
-            >
-              <Text style={dynamicStyles.modalText}>回到第一頁</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                  setShowBackToSearch(false);
+                }}
+              >
+                <Text style={dynamicStyles.modalText}>回到第一頁</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowBackToSearch(false)}>
-              <Text style={dynamicStyles.modalText}>取消</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity onPress={() => setShowBackToSearch(false)}>
+                <Text style={dynamicStyles.modalText}>取消</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </Modal>
       )}
     </>
@@ -363,7 +309,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       flex: 1,
       height: isMobile ? minTouchTarget : 50,
       backgroundColor: "#2c2c2e",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
       marginRight: spacing / 2,
       borderWidth: 2,
       borderColor: "transparent",
@@ -380,7 +326,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
       marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
     },
     qrButton: {
@@ -388,7 +334,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
     },
     errorText: {
       color: "red",

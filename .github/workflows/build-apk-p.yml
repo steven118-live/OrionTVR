@@ -6,6 +6,14 @@ on:
       custom_version:
         description: "輸入新版本號（留空則使用 package.json 中的版本）"
         required: false
+      buildMode:
+        description: "選擇建置模式 (full=clean build / incremental=只重建變更部分)"
+        required: true
+        default: "incremental"
+        type: choice
+        options:
+          - full
+          - incremental
 
 permissions:
   contents: write
@@ -38,6 +46,12 @@ jobs:
             final_version="${default_version}"
           fi
           echo "version=${final_version}" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version if custom_version is provided
+        if: ${{ github.event.inputs.custom_version != '' }}
+        run: |
+          jq '.version = "${{ github.event.inputs.custom_version }}"' package.json > tmp.json && mv tmp.json package.json
+
       - name: Setup JDK
         uses: actions/setup-java@v3
         with:
@@ -48,13 +62,21 @@ jobs:
         run: yarn prebuild
 
       - name: Build TV APK
-        run: yarn build
+        run: |
+          if [ "${{ github.event.inputs.buildMode }}" = "full" ]; then
+            yarn clean && yarn build
+          else
+            yarn build
+          fi
 
       - name: Rename APK file
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
-
+      - name: Check APK version info
+        run: |
+          sudo apt-get update && sudo apt-get install -y aapt
+          aapt dump badging artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk | grep version
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
