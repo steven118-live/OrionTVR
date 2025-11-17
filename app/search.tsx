@@ -59,7 +59,7 @@ export default function SearchScreen() {
     const CARD_WIDTH = 160;
     const numCols = Platform.OS === "android" && deviceType === "tv" ? 5 : 3;
 
-    const minGap = 8; // 最小間距
+    const minGap = 1; // 最小間距
     const totalCardWidth = CARD_WIDTH * numCols;
     const usedWidth = totalCardWidth + minGap * (numCols - 1);
     const remaining = screenWidth - usedWidth;
