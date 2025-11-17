@@ -8,9 +8,8 @@ import {
   TouchableOpacity,
   Platform,
   FlatList,
-  ActivityIndicator,
-  Text,
   BackHandler,
+  Dimensions,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -29,13 +28,13 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
-import Logger from '@/utils/Logger';
-import OpenCC from 'opencc-js';
+import Logger from "@/utils/Logger";
+import OpenCC from "opencc-js";
 
 const cn2tw = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
 const tw2cn = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'tw', to: 'cn' }) : (s: string) => s;
 
-const logger = Logger.withTag('SearchScreen');
+const logger = Logger.withTag("SearchScreen");
 
 export default function SearchScreen() {
   const [keyword, setKeyword] = useState("");
@@ -44,7 +43,8 @@ export default function SearchScreen() {
   const [error, setError] = useState<string | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
+  const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } =
+    useRemoteControlStore();
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
@@ -52,6 +52,16 @@ export default function SearchScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
+
+  // ✅ 只在 deviceType 改變時重新計算一次
+  const { numColumns, gap } = React.useMemo(() => {
+    const screenWidth = Dimensions.get("window").width;
+    const CARD_WIDTH = 160; // 與 VideoCard.tsx 保持一致
+    const numCols =
+      Platform.OS === "android" && deviceType === "tv" ? 5 : 3;
+    const g = (screenWidth - CARD_WIDTH * numCols) / (numCols + 1);
+    return { numColumns: numCols, gap: g };
+  }, [deviceType]);
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
 
@@ -62,7 +72,7 @@ export default function SearchScreen() {
         textInputRef.current?.focus?.();
         return true; // 攔截，不退出 App
       }
-      return false; // 焦點在搜尋欄時，交給系統（可退出或返回）
+      return false; // 焦點在搜尋欄時，交給系統
     };
 
     const sub = BackHandler.addEventListener("hardwareBackPress", handler);
@@ -70,7 +80,7 @@ export default function SearchScreen() {
   }, [isInputFocused]);
 
   useEffect(() => {
-    if (lastMessage && targetPage === 'search') {
+    if (lastMessage && targetPage === "search") {
       logger.debug("Received remote input:", lastMessage);
       const realMessage = lastMessage.split("_")[0];
       setKeyword(realMessage);
@@ -114,7 +124,7 @@ export default function SearchScreen() {
       ]);
       return;
     }
-    showRemoteModal('search');
+    showRemoteModal("search");
   };
 
   const renderItem = ({ item }: { item: SearchResult }) => (
@@ -178,20 +188,18 @@ export default function SearchScreen() {
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={Platform.OS === 'android' && deviceType === 'tv' ? 5 : 3}
-          contentContainerStyle={{ paddingHorizontal: spacing }}   // 新增，保持左右間距
-          columnWrapperStyle={{ justifyContent: "space-between" }} // 平均分配，避免切掉
-          initialNumToRender={10}
-          windowSize={5}
-          maxToRenderPerBatch={10}          // 控制一次渲染數量
-          updateCellsBatchingPeriod={50}    // 控制渲染批次間隔
-          removeClippedSubviews
-          onEndReachedThreshold={0.1}
-          getItemLayout={(data, index) => ({
-            length: 300, // 每個 item 的高度 (CARD_HEIGHT + margin)
-            offset: 300 * index,
-            index,
-          })} // 提前告訴 FlatList item 高度，避免計算延遲
+          numColumns={numColumns}
+          contentContainerStyle={{
+            paddingHorizontal: gap, // 左右邊距
+            // rowGap: gap,          // 垂直間距 (保留註解，等需要再打開)
+          }}
+          columnWrapperStyle={{
+            justifyContent: "flex-start",
+            columnGap: gap, // 橫向間距
+          }}
+          initialNumToRender={10}   // ✅ 初始渲染數量
+          windowSize={5}            // ✅ 虛擬化窗口大小
+          removeClippedSubviews     // ✅ 移除螢幕外元素
         />
       ) : (
         !loading && (
@@ -210,7 +218,7 @@ export default function SearchScreen() {
     </ThemedView>
   );
 
-  if (deviceType === 'tv') {
+  if (deviceType === "tv") {
     return content;
   }
 
@@ -276,4 +284,3 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     },
   });
 };
-
