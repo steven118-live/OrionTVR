@@ -47,29 +47,6 @@ jobs:
           fi
           echo "version=${final_version}" >> $GITHUB_OUTPUT
 
-      - name: Update package.json version if custom_version is provided
-        if: ${{ github.event.inputs.custom_version != '' }}
-        run: |
-          VERSION="${{ github.event.inputs.custom_version }}"
-          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
-          echo "Updated package.json version to ${VERSION}"
-
-      - name: Commit updated package.json version
-        if: ${{ github.event.inputs.custom_version != '' }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: bump version to ${{ github.event.inputs.custom_version }}"
-            git push
-          else
-            echo "No changes to commit, skipping push."
-          fi
-
-      - name: Confirm updated package.json version
-        run: cat package.json | grep version
-
       - name: Setup JDK
         uses: actions/setup-java@v3
         with:
@@ -98,6 +75,26 @@ jobs:
           else
             echo "Running incremental build..."
             yarn build
+          fi
+
+      - name: Update package.json version if custom_version is provided
+        if: ${{ github.event.inputs.custom_version != '' }}
+        run: |
+          VERSION="${{ github.event.inputs.custom_version }}"
+          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
+          echo "Updated package.json version to ${VERSION}"
+
+      - name: Commit updated package.json version
+        if: ${{ github.event.inputs.custom_version != '' }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump version to ${{ github.event.inputs.custom_version }}"
+            git push
+          else
+            echo "No changes to commit, skipping push."
           fi
 
       - name: Rename APK file
