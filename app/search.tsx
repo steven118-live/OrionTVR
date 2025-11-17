@@ -6,9 +6,9 @@ import {
   Alert,
   Keyboard,
   TouchableOpacity,
-  Platform,
   FlatList,
   BackHandler,
+  Platform,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -51,9 +51,12 @@ export default function SearchScreen() {
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing, columns } = responsiveConfig;
 
+  // ✅ override spacing：SearchScreen 在 TV 下 spacing=0
+  const listSpacing = deviceType === "tv" ? 0 : spacing;
+
   const flatListRef = useRef<FlatList<SearchResult>>(null);
 
-  // ✅ 保留 BackHandler 攔截
+  // 保留 BackHandler 攔截
   useEffect(() => {
     const handler = () => {
       if (!isInputFocused) {
@@ -178,7 +181,7 @@ export default function SearchScreen() {
           keyExtractor={(item) => item.id.toString()}
           numColumns={columns}
           contentContainerStyle={{
-            paddingHorizontal: spacing,
+            paddingHorizontal: listSpacing, // ✅ override spacing
           }}
           columnWrapperStyle={{
             justifyContent: "space-between",
