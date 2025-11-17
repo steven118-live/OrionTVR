@@ -10,7 +10,7 @@ import {
   FlatList,
   ActivityIndicator,
   Text,
-  BackHandler,   // ✅ 新增
+  BackHandler,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -48,23 +48,21 @@ export default function SearchScreen() {
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
-  // 響應式配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
 
-  // ✅ 攔截 Android Back：當焦點不在搜尋欄時，按下 Back 就回到搜尋欄
+  // 攔截 Android Back：當焦點不在搜尋欄時，按下 Back 就回到搜尋欄
   useEffect(() => {
     const handler = () => {
       if (!isInputFocused) {
         textInputRef.current?.focus?.();
-        return true; // 攔截，不退出 App
+        return true;
       }
-      return false; // 焦點在搜尋欄時，交給系統（可退出或返回）
+      return false;
     };
-
     const sub = BackHandler.addEventListener("hardwareBackPress", handler);
     return () => sub.remove();
   }, [isInputFocused]);
@@ -178,8 +176,9 @@ export default function SearchScreen() {
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={Platform.isTV ? 5 : 3}
-          columnWrapperStyle={{ justifyContent: "flex-start" }}
+          numColumns={Platform.OS === 'android' && deviceType === 'tv' ? 5 : 3}
+          contentContainerStyle={{ paddingHorizontal: spacing }}   // 新增，保持左右間距
+          columnWrapperStyle={{ justifyContent: "space-between" }} // 新增，平均分配
           initialNumToRender={10}
           windowSize={5}
           removeClippedSubviews
@@ -234,7 +233,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       flex: 1,
       height: isMobile ? minTouchTarget : 50,
       backgroundColor: "#2c2c2e",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
       marginRight: spacing / 2,
       borderWidth: 2,
       borderColor: "transparent",
@@ -251,7 +250,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
       marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
     },
     qrButton: {
@@ -259,7 +258,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
+      borderRadius: 8,
     },
     errorText: {
       color: "red",
@@ -268,3 +267,4 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     },
   });
 };
+
