@@ -1,5 +1,18 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, FlatList, ActivityIndicator } from "react-native";
+import {
+  View,
+  TextInput,
+  StyleSheet,
+  Alert,
+  Keyboard,
+  TouchableOpacity,
+  Platform,
+  FlatList,
+  ActivityIndicator,
+  Modal,
+  Text
+} from "react-native";
+import { useTVEventHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -92,6 +105,27 @@ export default function SearchScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
+
+  // 長按向上浮層
+  const flatListRef = useRef<FlatList<SearchResult>>(null);
+  const [showBackToSearch, setShowBackToSearch] = useState(false);
+  const pressTimer = useRef<NodeJS.Timeout | null>(null);
+  if (deviceType === 'tv') {
+    useTVEventHandler((evt) => {
+      if (evt && evt.eventType === "up") {
+        if (!pressTimer.current) {
+          pressTimer.current = setTimeout(() => {
+            setShowBackToSearch(true);
+          }, 3000); // 長按 3 秒
+        }
+      } else if (evt && evt.eventType === "upRelease") {
+        if (pressTimer.current) {
+          clearTimeout(pressTimer.current);
+          pressTimer.current = null;
+        }
+      }
+    });
+  }
 
   useEffect(() => {
     if (lastMessage && targetPage === 'search') {
@@ -226,6 +260,7 @@ export default function SearchScreen() {
         </View>
       ) : results.length > 0 ? (
         <FlatList
+          ref={flatListRef}
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
@@ -244,6 +279,35 @@ export default function SearchScreen() {
         )
       )}
       <RemoteControlModal />
+
+      {/* 浮層選單 */}
+      {showBackToSearch && (
+        <Modal transparent>
+          <View style={dynamicStyles.modal}>
+            <TouchableOpacity
+              onPress={() => {
+                textInputRef.current?.focus();
+                setShowBackToSearch(false);
+              }}
+            >
+              <Text style={dynamicStyles.modalText}>回到搜尋列</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                setShowBackToSearch(false);
+              }}
+            >
+              <Text style={dynamicStyles.modalText}>回到第一頁</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowBackToSearch(false)}>
+              <Text style={dynamicStyles.modalText}>取消</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      )}
     </>
   );
 
@@ -274,6 +338,19 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     container: {
       flex: 1,
       paddingTop: deviceType === 'tv' ? 50 : 0,
+    },
+    modal: {
+      backgroundColor: "rgba(0,0,0,0.8)",
+      padding: 20,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      flex: 1,
+    },
+    modalText: {
+      color: "white",
+      fontSize: 18,
+      marginVertical: 10,
     },
     searchContainer: {
       flexDirection: "row",
