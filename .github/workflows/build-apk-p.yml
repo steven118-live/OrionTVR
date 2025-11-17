@@ -9,7 +9,7 @@ on:
       buildMode:
         description: "選擇建置模式 (full=clean build / incremental=只重建變更部分)"
         required: true
-        default: "incremental"
+        default: "full"   #Deafault full
         type: choice
         options:
           - full
