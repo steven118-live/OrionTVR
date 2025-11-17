@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform  } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform, FlatList } from "react-native";
+import debounce from "lodash.debounce";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -21,7 +22,6 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
 import OpenCC from 'opencc-js';
-import debounce from "lodash.debounce";
 
 
 
@@ -246,14 +246,27 @@ export default function SearchScreen() {
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
         </View>
-      ) : (
-        <CustomScrollView
+      // ) : (
+      //   <CustomScrollView
+      //     data={results}
+      //     renderItem={renderItem}
+      //     loading={loading}
+      //     error={error}
+      //     emptyMessage="输入关键词开始搜索"
+      //   />
+      ) : results.length > 0 ? (
+        <FlatList
           data={results}
           renderItem={renderItem}
-          loading={loading}
-          error={error}
-          emptyMessage="输入关键词开始搜索"
+          keyExtractor={(item) => item.id.toString()}
+          initialNumToRender={10}
+          windowSize={5}
+          removeClippedSubviews
         />
+      ) : (
+        <View style={[commonStyles.center, { flex: 1 }]}>
+          <ThemedText style={dynamicStyles.errorText}>输入关键词开始搜索</ThemedText>
+        </View>
       )}
       <RemoteControlModal />
     </>
