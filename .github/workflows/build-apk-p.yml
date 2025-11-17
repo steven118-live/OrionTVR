@@ -47,6 +47,13 @@ jobs:
           fi
           echo "version=${final_version}" >> $GITHUB_OUTPUT
 
+      - name: Update package.json version if custom_version is provided
+        if: ${{ github.event.inputs.custom_version != '' }}
+        run: |
+          VERSION="${{ github.event.inputs.custom_version }}"
+          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
+          echo "Updated package.json version to ${VERSION}"
+
       - name: Setup JDK
         uses: actions/setup-java@v3
         with:
@@ -64,6 +71,7 @@ jobs:
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" android/app/build.gradle || true
           echo "Updated build.gradle versionCode=${CODE}, versionName=${VERSION}"
 
+
       - name: Build TV APK
         run: |
           if [ "${{ github.event.inputs.buildMode }}" = "full" ]; then
@@ -76,13 +84,6 @@ jobs:
             echo "Running incremental build..."
             yarn build
           fi
-
-      - name: Update package.json version if custom_version is provided
-        if: ${{ github.event.inputs.custom_version != '' }}
-        run: |
-          VERSION="${{ github.event.inputs.custom_version }}"
-          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
-          echo "Updated package.json version to ${VERSION}"
 
       - name: Commit updated package.json version
         if: ${{ github.event.inputs.custom_version != '' }}
