@@ -35,7 +35,7 @@ export function UpdateSection() {
 
       <View style={styles.row}>
         <ThemedText style={styles.label}>原始码最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{upstreamVersion || 'x.x.xx.'}</ThemedText>
+        <ThemedText style={styles.value}>v{upstreamVersion || 'x.x.xx'}</ThemedText>
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>当前版本</ThemedText>

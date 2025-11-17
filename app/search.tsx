@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform  } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -21,6 +21,7 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
 import OpenCC from 'opencc-js';
+import debounce from "lodash.debounce";
 
 
 
@@ -103,6 +104,25 @@ export default function SearchScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
+  // 建立 debounce 搜索（專供 TV 使用）
+  const debouncedSearch = debounce(async (term: string) => {
+    try {
+      const simplifiedTerm = tw2cn(term) ?? term;
+      const response = await api.searchVideos(simplifiedTerm);
+      if (response.results.length > 0) {
+        setResults(response.results);
+        setError(null);
+      } else {
+        setError("没有找到相关内容");
+      }
+    } catch (err) {
+      setError("搜索失败，请稍后重试。");
+      logger.info("Search failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, 300);
+
   // useEffect(() => {
   //   // Focus the text input when the screen loads
   //   const timer = setTimeout(() => {
@@ -131,23 +151,29 @@ export default function SearchScreen() {
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
-    try {
-      // 搜索前：繁→簡
-      // const simplifiedTerm = convertTw2CnFastInline(term);
-      // const simplifiedTerm = await convertTw2CnSafeAsync(term);
-      const simplifiedTerm = tw2cn(term) ?? term;
-      const response = await api.searchVideos(simplifiedTerm);
-      if (response.results.length > 0) {
-        setResults(response.results);
-      } else {
-        setError("没有找到相关内容");
+
+      try {
+        // 搜索前：繁→簡
+        // const simplifiedTerm = convertTw2CnFastInline(term);
+        // const simplifiedTerm = await convertTw2CnSafeAsync(term);
+        const simplifiedTerm = tw2cn(term) ?? term;
+        if (Platform.isTV) {
+          // 在 TV 上用 debounce，避免 IME 過度觸發
+          debouncedSearch(simplifiedTerm);
+        } else {
+          const response = await api.searchVideos(simplifiedTerm);
+          if (response.results.length > 0) {
+            setResults(response.results);
+          } else {
+            setError("没有找到相关内容");
+          }
+        }
+      } catch (err) {
+        setError("搜索失败，请稍后重试。");
+        logger.info("Search failed:", err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError("搜索失败，请稍后重试。");
-      logger.info("Search failed:", err);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const onSearchPress = () => handleSearch();
