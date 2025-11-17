@@ -53,14 +53,21 @@ export default function SearchScreen() {
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
 
-  // ✅ 只在 deviceType 改變時重新計算一次
-  const { numColumns, gap } = React.useMemo(() => {
+  // 只在 deviceType 改變時重新計算一次
+  const { numColumns, gap, sidePadding } = React.useMemo(() => {
     const screenWidth = Dimensions.get("window").width;
-    const CARD_WIDTH = 160; // 與 VideoCard.tsx 保持一致
-    const numCols =
-      Platform.OS === "android" && deviceType === "tv" ? 5 : 3;
-    const g = (screenWidth - CARD_WIDTH * numCols) / (numCols + 1);
-    return { numColumns: numCols, gap: g };
+    const CARD_WIDTH = 160;
+    const numCols = Platform.OS === "android" && deviceType === "tv" ? 5 : 3;
+
+    const minGap = 8; // 最小間距
+    const totalCardWidth = CARD_WIDTH * numCols;
+    const usedWidth = totalCardWidth + minGap * (numCols - 1);
+    const remaining = screenWidth - usedWidth;
+
+    const extraPerGap = remaining / (numCols + 1);
+    const g = minGap + extraPerGap;
+
+    return { numColumns: numCols, gap: g, sidePadding: g };
   }, [deviceType]);
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
@@ -184,23 +191,22 @@ export default function SearchScreen() {
         </View>
       ) : results.length > 0 ? (
         <FlatList
-          ref={flatListRef}
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
           numColumns={numColumns}
           contentContainerStyle={{
-            paddingHorizontal: gap, // 左右邊距
-            // rowGap: gap,          // 垂直間距 (保留註解，等需要再打開)
+            paddingHorizontal: sidePadding,
           }}
           columnWrapperStyle={{
             justifyContent: "flex-start",
-            columnGap: gap, // 橫向間距
+            columnGap: gap,
           }}
-          initialNumToRender={10}   // ✅ 初始渲染數量
-          windowSize={5}            // ✅ 虛擬化窗口大小
-          removeClippedSubviews     // ✅ 移除螢幕外元素
+          initialNumToRender={10}
+          windowSize={5}
+          removeClippedSubviews
         />
+
       ) : (
         !loading && (
           <View style={[commonStyles.center, { flex: 1 }]}>
