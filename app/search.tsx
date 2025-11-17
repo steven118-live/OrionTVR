@@ -18,6 +18,7 @@ import { useTVEventHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
+import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { api, SearchResult } from "@/services/api";
 import { Search, QrCode } from "lucide-react-native";
 import { StyledButton } from "@/components/StyledButton";
@@ -187,7 +188,9 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
         )}
       </View>
 
-      {error ? (
+      {loading ? (
+        <VideoLoadingAnimation showProgressBar={false} />
+      ) : error ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
         </View>
@@ -316,7 +319,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       flex: 1,
       height: isMobile ? minTouchTarget : 50,
       backgroundColor: "#2c2c2e",
-      borderRadius: 8,
+      borderRadius: isMobile ? 8 : 8,
       marginRight: spacing / 2,
       borderWidth: 2,
       borderColor: "transparent",
@@ -333,7 +336,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: 8,
+      borderRadius: isMobile ? 8 : 8,
       marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
     },
     qrButton: {
@@ -341,7 +344,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       height: isMobile ? minTouchTarget : 50,
       justifyContent: "center",
       alignItems: "center",
-      borderRadius: 8,
+      borderRadius: isMobile ? 8 : 8,
     },
     errorText: {
       color: "red",
