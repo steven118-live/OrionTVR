@@ -10,6 +10,7 @@ import {
   FlatList,
   ActivityIndicator,
   Text,
+  BackHandler,   // ✅ 新增
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -53,6 +54,20 @@ export default function SearchScreen() {
   const { deviceType, spacing } = responsiveConfig;
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
+
+  // ✅ 攔截 Android Back：當焦點不在搜尋欄時，按下 Back 就回到搜尋欄
+  useEffect(() => {
+    const handler = () => {
+      if (!isInputFocused) {
+        textInputRef.current?.focus?.();
+        return true; // 攔截，不退出 App
+      }
+      return false; // 焦點在搜尋欄時，交給系統（可退出或返回）
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", handler);
+    return () => sub.remove();
+  }, [isInputFocused]);
 
   useEffect(() => {
     if (lastMessage && targetPage === 'search') {
