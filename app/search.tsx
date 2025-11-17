@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, Platform, FlatList } from "react-native";
-import debounce from "lodash.debounce";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, FlatList, ActivityIndicator } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -104,25 +103,6 @@ export default function SearchScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMessage, targetPage]);
-  // 建立 debounce 搜索（專供 TV 使用）
-  const debouncedSearch = debounce(async (term: string) => {
-    try {
-      const simplifiedTerm = tw2cn(term) ?? term;
-      const response = await api.searchVideos(simplifiedTerm);
-      if (response.results.length > 0) {
-        setResults(response.results);
-        setError(null);
-      } else {
-        setError("没有找到相关内容");
-      }
-    } catch (err) {
-      setError("搜索失败，请稍后重试。");
-      logger.info("Search failed:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, 300);
-
   // useEffect(() => {
   //   // Focus the text input when the screen loads
   //   const timer = setTimeout(() => {
@@ -151,29 +131,23 @@ export default function SearchScreen() {
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
-
-      try {
-        // 搜索前：繁→簡
-        // const simplifiedTerm = convertTw2CnFastInline(term);
-        // const simplifiedTerm = await convertTw2CnSafeAsync(term);
-        const simplifiedTerm = tw2cn(term) ?? term;
-        if (Platform.isTV) {
-          // 在 TV 上用 debounce，避免 IME 過度觸發
-          debouncedSearch(simplifiedTerm);
-        } else {
-          const response = await api.searchVideos(simplifiedTerm);
-          if (response.results.length > 0) {
-            setResults(response.results);
-          } else {
-            setError("没有找到相关内容");
-          }
-        }
-      } catch (err) {
-        setError("搜索失败，请稍后重试。");
-        logger.info("Search failed:", err);
-      } finally {
-        setLoading(false);
+    try {
+      // 搜索前：繁→簡
+      // const simplifiedTerm = convertTw2CnFastInline(term);
+      // const simplifiedTerm = await convertTw2CnSafeAsync(term);
+      const simplifiedTerm = tw2cn(term) ?? term;
+      const response = await api.searchVideos(simplifiedTerm);
+      if (response.results.length > 0) {
+        setResults(response.results);
+      } else {
+        setError("没有找到相关内容");
       }
+    } catch (err) {
+      setError("搜索失败，请稍后重试。");
+      logger.info("Search failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onSearchPress = () => handleSearch();
@@ -189,7 +163,7 @@ export default function SearchScreen() {
     showRemoteModal('search');
   };
 
-  const renderItem = ({ item }: { item: SearchResult; index: number }) => (
+  const renderItem = ({ item }: { item: SearchResult }) => (
     <VideoCard
       id={item.id.toString()}
       source={item.source}
@@ -233,6 +207,12 @@ export default function SearchScreen() {
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
           <Search size={deviceType === 'mobile' ? 20 : 24} color="white" />
         </StyledButton>
+
+        {/* 搜尋中顯示動態放大鏡 */}
+        {loading && (
+          <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginLeft: 8 }} />
+        )}
+
         {deviceType !== 'mobile' && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
             <QrCode size={deviceType === 'tv' ? 24 : 20} color="white" />
@@ -240,33 +220,28 @@ export default function SearchScreen() {
         )}
       </View>
 
-      {loading ? (
-        <VideoLoadingAnimation showProgressBar={false} />
-      ) : error ? (
+      {error ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
         </View>
-      // ) : (
-      //   <CustomScrollView
-      //     data={results}
-      //     renderItem={renderItem}
-      //     loading={loading}
-      //     error={error}
-      //     emptyMessage="输入关键词开始搜索"
-      //   />
       ) : results.length > 0 ? (
         <FlatList
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
+          numColumns={5}
+          columnWrapperStyle={{ justifyContent: "flex-start" }}
           initialNumToRender={10}
           windowSize={5}
           removeClippedSubviews
         />
+
       ) : (
-        <View style={[commonStyles.center, { flex: 1 }]}>
-          <ThemedText style={dynamicStyles.errorText}>输入关键词开始搜索</ThemedText>
-        </View>
+        !loading && (
+          <View style={[commonStyles.center, { flex: 1 }]}>
+            <ThemedText style={dynamicStyles.errorText}>输入关键词开始搜索</ThemedText>
+          </View>
+        )
       )}
       <RemoteControlModal />
     </>
