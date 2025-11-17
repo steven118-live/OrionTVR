@@ -50,7 +50,12 @@ jobs:
       - name: Update package.json version if custom_version is provided
         if: ${{ github.event.inputs.custom_version != '' }}
         run: |
-          jq '.version = "${{ github.event.inputs.custom_version }}"' package.json > tmp.json && mv tmp.json package.json
+          VERSION="${{ github.event.inputs.custom_version }}"
+          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
+          echo "Updated package.json version to ${VERSION}"
+
+      - name: Confirm updated package.json version
+        run: cat package.json | grep version
 
       - name: Setup JDK
         uses: actions/setup-java@v3
@@ -60,6 +65,14 @@ jobs:
 
       - name: Prebuild TV App
         run: yarn prebuild
+
+      - name: Update Android versionCode and versionName
+        run: |
+          VERSION="${{ steps.package-version.outputs.version }}"
+          CODE=$(echo "$VERSION" | awk -F. '{ printf "%d%03d%03d", $1, $2, $3 }')
+          sed -i "s/versionCode .*/versionCode ${CODE}/" android/app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" android/app/build.gradle
+          echo "Updated build.gradle versionCode=${CODE}, versionName=${VERSION}"
 
       - name: Build TV APK
         run: |
@@ -73,10 +86,12 @@ jobs:
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+
       - name: Check APK version info
         run: |
           sudo apt-get update && sudo apt-get install -y aapt
           aapt dump badging artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk | grep version
+
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
