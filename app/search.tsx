@@ -10,7 +10,9 @@ import {
   FlatList,
   ActivityIndicator,
   Modal,
-  Text
+  Text,
+  BackHandler,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
@@ -48,44 +50,40 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
-  // 响应式布局配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
 
-  // 長按向上浮層
   const flatListRef = useRef<FlatList<SearchResult>>(null);
   const [showBackToSearch, setShowBackToSearch] = useState(false);
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ 正確的 TV 長按向上事件處理
+  // 攔截 Android Back：浮層開啟時只關閉浮層，不退出 App
   useEffect(() => {
-    if (!Platform.isTV) return;
+    if (!showBackToSearch) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setShowBackToSearch(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showBackToSearch]);
 
-    const handler = (evt: { eventType?: string } | null) => {
-      if (!evt) return;
-      if (evt.eventType === "up") {
-        if (!pressTimer.current) {
-          pressTimer.current = setTimeout(() => {
-            setShowBackToSearch(true);
-          }, 2000);
-        }
-      } else if (evt.eventType === "upRelease") {
-        if (pressTimer.current) {
-          clearTimeout(pressTimer.current);
-          pressTimer.current = null;
-        }
+  // TV 長按向上事件
+  useTVEventHandler((evt) => {
+    if (!Platform.isTV || !evt) return;
+    if (evt.eventType === "up") {
+      if (!pressTimer.current) {
+        pressTimer.current = setTimeout(() => {
+          setShowBackToSearch(true);
+        }, 2000);
       }
-    };
-
-    useTVEventHandler(handler);
-    return () => {
+    } else if (evt.eventType === "upRelease") {
       if (pressTimer.current) {
         clearTimeout(pressTimer.current);
         pressTimer.current = null;
       }
-    };
-  }, []);
+    }
+  });
 
   useEffect(() => {
     if (lastMessage && targetPage === 'search') {
@@ -152,7 +150,6 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
     </TouchableOpacity>
   );
 
-  // 动态样式
   const dynamicStyles = createResponsiveStyles(deviceType, spacing);
 
   const renderSearchContent = () => (
@@ -182,7 +179,6 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
           <Search size={deviceType === 'mobile' ? 20 : 24} color="white" />
         </StyledButton>
-        {/* 搜尋中顯示動態放大鏡 */}
         {loading && <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginLeft: 8 }} />}
         {deviceType !== 'mobile' && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
@@ -191,7 +187,6 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
         )}
       </View>
 
-      {/* 搜索結果 */}
       {error ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
@@ -202,15 +197,14 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={Platform.isTV ? 5 : 3}   // ✅ 動態顯示數量
+          numColumns={Platform.isTV ? 5 : 3}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
           initialNumToRender={10}
           windowSize={5}
           removeClippedSubviews
-          onEndReached={() => setShowBackToSearch(true)}   // ✅ 底部觸發浮層
+          onEndReached={() => setShowBackToSearch(true)}
           onEndReachedThreshold={0.1}
         />
-
       ) : (
         !loading && (
           <View style={[commonStyles.center, { flex: 1 }]}>
@@ -220,40 +214,47 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
       )}
       <RemoteControlModal />
 
-      {/* 浮層選單 */}
+// ...前面 import 與程式碼保持不變...
+
       {showBackToSearch && (
-        <Modal transparent>
+        <Modal
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowBackToSearch(false)} // ✅ Android Back 對應
+        >
           <View style={dynamicStyles.modal}>
             {enableBackdropClose && (
               <TouchableOpacity
                 style={StyleSheet.absoluteFill}
+                activeOpacity={1}
                 onPress={() => setShowBackToSearch(false)}
               />
             )}
+            <TouchableWithoutFeedback>
+              <View style={dynamicStyles.modalContent}>
+                <TouchableOpacity
+                  onPress={() => {
+                    textInputRef.current?.focus?.();
+                    setShowBackToSearch(false);
+                  }}
+                >
+                  <Text style={dynamicStyles.modalText}>回到搜尋列</Text>
+                </TouchableOpacity>
 
-            <View style={dynamicStyles.modalContent}>
-              <TouchableOpacity
-                onPress={() => {
-                  textInputRef.current?.focus?.();
-                  setShowBackToSearch(false);
-                }}
-              >
-                <Text style={dynamicStyles.modalText}>回到搜尋列</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+                    setShowBackToSearch(false);
+                  }}
+                >
+                  <Text style={dynamicStyles.modalText}>回到第一頁</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => {
-                  flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
-                  setShowBackToSearch(false);
-                }}
-              >
-                <Text style={dynamicStyles.modalText}>回到第一頁</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setShowBackToSearch(false)}>
-                <Text style={dynamicStyles.modalText}>取消</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity onPress={() => setShowBackToSearch(false)}>
+                  <Text style={dynamicStyles.modalText}>取消</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
         </Modal>
       )}
@@ -266,7 +267,6 @@ export default function SearchScreen({ enableBackdropClose = true }: { enableBac
     </ThemedView>
   );
 
-  // 根据设备类型决定是否包装在响应式导航中
   if (deviceType === 'tv') {
     return content;
   }
