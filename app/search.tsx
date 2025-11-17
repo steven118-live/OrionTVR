@@ -9,7 +9,6 @@ import {
   Platform,
   FlatList,
   BackHandler,
-  Dimensions,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -31,8 +30,8 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from "@/utils/Logger";
 import OpenCC from "opencc-js";
 
-const cn2tw = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'cn', to: 'tw' }) : (s: string) => s;
-const tw2cn = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: 'tw', to: 'cn' }) : (s: string) => s;
+const cn2tw = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: "cn", to: "tw" }) : (s: string) => s;
+const tw2cn = (OpenCC as any)?.Converter ? (OpenCC as any).Converter({ from: "tw", to: "cn" }) : (s: string) => s;
 
 const logger = Logger.withTag("SearchScreen");
 
@@ -43,36 +42,18 @@ export default function SearchScreen() {
   const [error, setError] = useState<string | null>(null);
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } =
-    useRemoteControlStore();
+  const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
   // 響應式配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
-  const { deviceType, spacing } = responsiveConfig;
-
-  // 只在 deviceType 改變時重新計算一次
-  const { numColumns, gap, sidePadding } = React.useMemo(() => {
-    const screenWidth = Dimensions.get("window").width;
-    const CARD_WIDTH = 160;
-    const numCols = Platform.OS === "android" && deviceType === "tv" ? 5 : 3;
-
-    const minGap = 1; // 最小間距
-    const totalCardWidth = CARD_WIDTH * numCols;
-    const usedWidth = totalCardWidth + minGap * (numCols - 1);
-    const remaining = screenWidth - usedWidth;
-
-    const extraPerGap = remaining / (numCols + 1);
-    const g = minGap + extraPerGap;
-
-    return { numColumns: numCols, gap: g, sidePadding: g };
-  }, [deviceType]);
+  const { deviceType, spacing, columns } = responsiveConfig;
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
 
-  // 攔截 Android Back：當焦點不在搜尋欄時，按下 Back 就回到搜尋欄
+  // ✅ 保留 BackHandler 攔截
   useEffect(() => {
     const handler = () => {
       if (!isInputFocused) {
@@ -174,11 +155,11 @@ export default function SearchScreen() {
           />
         </TouchableOpacity>
         <StyledButton style={dynamicStyles.searchButton} onPress={onSearchPress}>
-          <Search size={deviceType === 'mobile' ? 20 : 24} color="white" />
+          <Search size={deviceType === "mobile" ? 20 : 24} color="white" />
         </StyledButton>
-        {deviceType !== 'mobile' && (
+        {deviceType !== "mobile" && (
           <StyledButton style={dynamicStyles.qrButton} onPress={handleQrPress}>
-            <QrCode size={deviceType === 'tv' ? 24 : 20} color="white" />
+            <QrCode size={deviceType === "tv" ? 24 : 20} color="white" />
           </StyledButton>
         )}
       </View>
@@ -191,22 +172,18 @@ export default function SearchScreen() {
         </View>
       ) : results.length > 0 ? (
         <FlatList
+          ref={flatListRef}
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={numColumns}
+          numColumns={columns}
           contentContainerStyle={{
-            paddingHorizontal: sidePadding,
+            paddingHorizontal: spacing,
           }}
           columnWrapperStyle={{
-            justifyContent: "flex-start",
-            columnGap: gap,
+            justifyContent: "space-between",
           }}
-          initialNumToRender={10}
-          windowSize={5}
-          removeClippedSubviews
         />
-
       ) : (
         !loading && (
           <View style={[commonStyles.center, { flex: 1 }]}>
@@ -237,13 +214,13 @@ export default function SearchScreen() {
 }
 
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === 'mobile';
+  const isMobile = deviceType === "mobile";
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
 
   return StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: deviceType === 'tv' ? 50 : 0,
+      paddingTop: deviceType === "tv" ? 50 : 0,
     },
     searchContainer: {
       flexDirection: "row",

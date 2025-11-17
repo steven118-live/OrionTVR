@@ -34,7 +34,8 @@ const getLayoutConfig = (
   height: number,
   isPortrait: boolean
 ): ResponsiveConfig => {
-  const spacing = deviceType === "mobile" ? 8 : deviceType === "tablet" ? 12 : 16;
+  // ✅ 最小修改：TV 模式 spacing 改成 0，避免影響卡片 grid
+  const spacing = deviceType === "mobile" ? 8 : deviceType === "tablet" ? 12 : 0;
 
   let columns: number;
   let cardWidth: number;
