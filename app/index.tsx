@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState } from "react";
-import { AppState, View, StyleSheet, ActivityIndicator, FlatList, Pressable, Animated, StatusBar, Platform, BackHandler, ToastAndroid } from "react-native";
+import { View, StyleSheet, ActivityIndicator, FlatList, Pressable, Animated, StatusBar, Platform, BackHandler, ToastAndroid } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -52,15 +52,6 @@ export default function HomeScreen() {
       refreshPlayRecords();
     }, [refreshPlayRecords])
   );
-
- useEffect(() => {
-   if (categories.length > 0) {
-     const hotCategory = categories.find(c => c.title === "熱門劇集");
-     if (hotCategory) {
-       selectCategory(hotCategory);
-     }
-   }
- }, [categories]);
 
     // 双击返回退出逻辑（只限当前页面）
   const backPressTimeRef = useRef<number | null>(null);
