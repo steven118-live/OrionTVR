@@ -18,7 +18,7 @@ const navigationItems: NavigationItem[] = [
     name: 'home',
     label: '首页',
     icon: Home,
-    route: '/',
+    route: '/index',
   },
   {
     name: 'live',
