@@ -174,19 +174,40 @@ export default function SearchScreen() {
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
         </View>
       ) : results.length > 0 ? (
-        <FlatList
-          ref={flatListRef}
-          data={results}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id.toString()}
-          numColumns={listColumns} // ✅ TV 強制 5
-          contentContainerStyle={{
-            paddingHorizontal: listSpacing, // ✅ spacing override
-          }}
-          columnWrapperStyle={{
-            columnGap: listSpacing, // ✅ gap 控制
-          }}
-        />
+         <FlatList
+           ref={flatListRef}
+           data={results}
+           renderItem={({ item }) => (
+             <View
+               // 讓每個 item 精準佔用 1/5（TV）或 1/columns 的寬度
+               style={{
+                 width: `${100 / listColumns}%`,
+                 // 確保高度撐滿卡片內容
+                 alignSelf: "stretch",
+               }}
+             >
+               <VideoCard
+                 id={item.id.toString()}
+                 source={item.source}
+                 title={item.title}
+                 poster={item.poster}
+                 year={item.year}
+                 sourceName={item.source_name}
+                 api={api}
+                 // 如果 VideoCard 有外層 margin/padding，務必在組件內移除或用 style 覆蓋
+                 // style={{ marginHorizontal: 0, paddingHorizontal: 0 }}
+               />
+             </View>
+           )}
+           keyExtractor={(item) => item.id.toString()}
+           numColumns={listColumns}
+           contentContainerStyle={{
+             paddingHorizontal: listSpacing, // TV = 0
+           }}
+           columnWrapperStyle={{
+             columnGap: deviceType === "tv" ? 0 : listSpacing, // TV 無 gap
+           }}
+         />
       ) : (
         !loading && (
           <View style={[commonStyles.center, { flex: 1 }]}>
