@@ -1,6 +1,11 @@
 name: Build Android APK
 
 on:
+  on:
+  push:
+    tags:
+      - 'v*'
+      
   workflow_dispatch:
 
 permissions:

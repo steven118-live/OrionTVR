@@ -1,6 +1,10 @@
 name: Build Android APK Personal
 
 on:
+  on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       custom_version:
