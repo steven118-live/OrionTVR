@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   FlatList,
   BackHandler,
-  Platform,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -51,8 +50,9 @@ export default function SearchScreen() {
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing, columns } = responsiveConfig;
 
-  // ✅ override spacing：SearchScreen 在 TV 下 spacing=0
+  // ✅ TV 模式 spacing=0, numColumns=5
   const listSpacing = deviceType === "tv" ? 0 : spacing;
+  const listColumns = deviceType === "tv" ? 5 : columns;
 
   const flatListRef = useRef<FlatList<SearchResult>>(null);
 
@@ -179,12 +179,12 @@ export default function SearchScreen() {
           data={results}
           renderItem={renderItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={columns}
+          numColumns={listColumns} // ✅ TV 強制 5
           contentContainerStyle={{
-            paddingHorizontal: listSpacing, // ✅ override spacing
+            paddingHorizontal: listSpacing, // ✅ spacing override
           }}
           columnWrapperStyle={{
-            justifyContent: "space-between",
+            columnGap: listSpacing, // ✅ gap 控制
           }}
         />
       ) : (
@@ -236,7 +236,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       flex: 1,
       height: isMobile ? minTouchTarget : 50,
       backgroundColor: "#2c2c2e",
-      borderRadius: 8,
+      borderRadius: isMobile ? 8 : 8,
       marginRight: spacing / 2,
       borderWidth: 2,
       borderColor: "transparent",
@@ -254,7 +254,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: isMobile ? 8 : 8,
-      marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
+      marginRight: deviceType !== "mobile" ? spacing / 2 : 0,
     },
     qrButton: {
       width: isMobile ? minTouchTarget : 50,
