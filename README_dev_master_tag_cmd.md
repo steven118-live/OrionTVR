@@ -39,6 +39,16 @@ git push origin dev
 git checkout master
 git pull origin master --rebase
 
+# 衝突時 用 dev 分支的版本覆蓋當前檔案
+git checkout --theirs -- .github/workflows/build-apk-p.yml
+
+# 檢查內容是否正確（建議打開編輯器確認）
+git diff .github/workflows/build-apk-p.yml
+
+# 標記為已解決並 commit
+git add .github/workflows/build-apk-p.yml
+git commit -m "chore: merge dev into master (accept dev version for build-apk-p.yml)"
+
 # 3) 合併 dev → master
 git merge --no-ff dev
 git push origin master
