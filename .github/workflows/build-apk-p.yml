@@ -2,8 +2,10 @@ name: Build Android APK Personal
 
 on:
   push:
+    branches:
+      - '**'     # 所有分支
     tags:
-      - 'v*'
+      - '*'      # 所有 tag
   workflow_dispatch:
     inputs:
       custom_version:
@@ -12,11 +14,20 @@ on:
       buildMode:
         description: "選擇建置模式 (full=clean build / incremental=只重建變更部分)"
         required: true
-        default: "full"   #Deafault full
+        default: "full"
         type: choice
         options:
           - full
           - incremental
+      buildTarget:
+        description: "選擇建置來源 (tag/master/dev)"
+        required: true
+        default: "tag"
+        type: choice
+        options:
+          - tag
+          - master
+          - dev
 
 permissions:
   contents: write
@@ -28,6 +39,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.buildTarget == 'tag' && github.ref || github.event.inputs.buildTarget }}
+
+      - name: Verify branch exists (for master/dev)
+        if: ${{ github.event.inputs.buildTarget != 'tag' }}
+        run: |
+          git ls-remote --heads origin ${{ github.event.inputs.buildTarget }} || \
+          (echo "Branch ${{ github.event.inputs.buildTarget }} not found on remote" && exit 1)
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -74,7 +93,6 @@ jobs:
           sed -i "s/versionName \".*\"/versionName \"${VERSION}\"/" android/app/build.gradle || true
           echo "Updated build.gradle versionCode=${CODE}, versionName=${VERSION}"
 
-
       - name: Build TV APK
         run: |
           if [ "${{ github.event.inputs.buildMode }}" = "full" ]; then
@@ -89,7 +107,7 @@ jobs:
           fi
 
       - name: Commit updated package.json version
-        if: ${{ github.event.inputs.custom_version != '' }}
+        if: ${{ github.event.inputs.custom_version != '' && github.event_name == 'workflow_dispatch' }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -106,6 +124,13 @@ jobs:
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: orionTV-${{ steps.package-version.outputs.version }}
+          path: artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+          retention-days: 7   # 保留 7 天，避免堆積
+
       - name: Check APK version info
         run: |
           sudo apt-get update && sudo apt-get install -y aapt
@@ -118,6 +143,8 @@ jobs:
           name: Release v${{ steps.package-version.outputs.version }}
           body: |
             Automated release for version v${{ steps.package-version.outputs.version }}.
+            Build target: ${{ github.event.inputs.buildTarget }}
+            Build mode: ${{ github.event.inputs.buildMode }}
             This build includes the small version .xxx(001-999) suffix for personal/internal use.
           draft: false
           prerelease: false
