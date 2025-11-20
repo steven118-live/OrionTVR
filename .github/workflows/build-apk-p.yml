@@ -3,16 +3,14 @@ name: Build Android APK Personal
 on:
   push:
     branches:
-      - '**'     # 所有分支
-    tags:
-      - '*'      # 所有 tag
+      - dev        # ✅ 只有 dev 分支 push 會自動觸發
   workflow_dispatch:
     inputs:
       custom_version:
-        description: "輸入新版本號（留空則使用 package.json 中的版本）"
+        description: "輸入版本號（tag 模式必填，例如 1.3.11.004）"
         required: false
       buildMode:
-        description: "選擇建置模式 (full=clean build / incremental=只重建變更部分)"
+        description: "建置模式 (full=乾淨建置 / incremental=增量建置)"
         required: true
         default: "full"
         type: choice
@@ -20,33 +18,51 @@ on:
           - full
           - incremental
       buildTarget:
-        description: "選擇建置來源 (tag/master/dev)"
+        description: "建置來源 (dev / tag)"
         required: true
         default: "tag"
         type: choice
         options:
-          - tag
-          - master
           - dev
+          - tag
 
 permissions:
   contents: write
 
 jobs:
-  direct_build:
-    name: Build Android TV APK
+  release_build:
+    # ✅ 僅允許兩種觸發：
+    # 1) dev 分支 push
+    # 2) workflow_dispatch（手動）且 buildTarget 為 dev 或 tag
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out repository
+      - name: Validate inputs for tag builds
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.buildTarget == 'tag' }}
+        run: |
+          if [ -z "${{ github.event.inputs.custom_version }}" ]; then
+            echo "ERROR: tag build requires 'custom_version' (e.g., 1.3.11.004)"
+            exit 1
+          fi
+          # 檢查 tag 是否存在於遠端
+          TAG="v${{ github.event.inputs.custom_version }}"
+          if ! git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+            echo "ERROR: Tag ${TAG} not found on remote."
+            exit 1
+          fi
+          echo "Tag ${TAG} verified."
+
+      - name: Checkout
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.inputs.buildTarget == 'tag' && github.ref || github.event.inputs.buildTarget }}
-
-      - name: Verify branch exists (for master/dev)
-        if: ${{ github.event.inputs.buildTarget != 'tag' }}
-        run: |
-          git ls-remote --heads origin ${{ github.event.inputs.buildTarget }} || \
-          (echo "Branch ${{ github.event.inputs.buildTarget }} not found on remote" && exit 1)
+          # ✅ 三種情境的 checkout ref：
+          # - dev push: 自動使用 dev
+          # - workflow_dispatch + dev: 使用 dev
+          # - workflow_dispatch + tag: 使用指定 tag（refs/tags/vX.Y.Z.xxx）
+          ref: ${{ github.event_name == 'push' && 'dev' || (github.event.inputs.buildTarget == 'dev' && 'dev' || format('refs/tags/v{0}', github.event.inputs.custom_version)) }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -57,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Get version from package.json
+      - name: Get version from package.json (fallback when custom_version not provided)
         id: package-version
         env:
           CUSTOM_VERSION: ${{ github.event.inputs.custom_version }}
@@ -68,13 +84,7 @@ jobs:
             final_version="${default_version}"
           fi
           echo "version=${final_version}" >> $GITHUB_OUTPUT
-
-      - name: Update package.json version if custom_version is provided
-        if: ${{ github.event.inputs.custom_version != '' }}
-        run: |
-          VERSION="${{ github.event.inputs.custom_version }}"
-          jq ".version = \"${VERSION}\"" package.json > tmp.json && mv tmp.json package.json
-          echo "Updated package.json version to ${VERSION}"
+          echo "Resolved version=${final_version}"
 
       - name: Setup JDK
         uses: actions/setup-java@v3
@@ -106,35 +116,26 @@ jobs:
             yarn build
           fi
 
-      - name: Commit updated package.json version
-        if: ${{ github.event.inputs.custom_version != '' && github.event_name == 'workflow_dispatch' }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: bump version to ${{ github.event.inputs.custom_version }}"
-            git push
-          else
-            echo "No changes to commit, skipping push."
-          fi
-
-      - name: Rename APK file
+      - name: Rename APK file with buildTarget
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+          TARGET="${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}"
+          VERSION="${{ steps.package-version.outputs.version }}"
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "artifacts/orionTV.${TARGET}-${VERSION}.apk"
+          echo "APK prepared: artifacts/orionTV.${TARGET}-${VERSION}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: orionTV-${{ steps.package-version.outputs.version }}
-          path: artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
-          retention-days: 7   # 保留 7 天，避免堆積
+          name: orionTV-${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}-${{ steps.package-version.outputs.version }}
+          path: artifacts/orionTV.${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}-${{ steps.package-version.outputs.version }}.apk
+          retention-days: 7
 
       - name: Check APK version info
         run: |
           sudo apt-get update && sudo apt-get install -y aapt
-          aapt dump badging artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk | grep version
+          aapt dump badging "artifacts/orionTV.${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}-${{ steps.package-version.outputs.version }}.apk" | grep version
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
@@ -143,11 +144,12 @@ jobs:
           name: Release v${{ steps.package-version.outputs.version }}
           body: |
             Automated release for version v${{ steps.package-version.outputs.version }}.
-            Build target: ${{ github.event.inputs.buildTarget }}
+            Build target: ${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}
             Build mode: ${{ github.event.inputs.buildMode }}
+            Commit: ${{ github.sha }}
             This build includes the small version .xxx(001-999) suffix for personal/internal use.
           draft: false
           prerelease: false
-          files: artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+          files: artifacts/orionTV.${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}-${{ steps.package-version.outputs.version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

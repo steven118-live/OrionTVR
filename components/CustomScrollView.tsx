@@ -7,15 +7,19 @@ import {
   BackHandler,
   FlatList,
   ViewStyle,
+  Platform,
 } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 
+// 導航堆疊：用來記錄分類層級
+const navigationStack: string[] = [];
+
 interface CustomScrollViewProps {
   data: any[];
   renderItem: ({ item, index }: { item: any; index: number }) => React.ReactNode;
-  numColumns?: number; // 如果不提供，使用響應式配置
+  numColumns?: number;
   loading?: boolean;
   loadingMore?: boolean;
   error?: string | null;
@@ -23,6 +27,7 @@ interface CustomScrollViewProps {
   loadMoreThreshold?: number; // 控制返回頂部按鈕出現的滾動距離閾值，不影響效能
   emptyMessage?: string;
   ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
+  categoryKey?: string; // ✅ 當前分類的識別字串
 }
 
 const CustomScrollView: React.FC<CustomScrollViewProps> = ({
@@ -36,6 +41,7 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   loadMoreThreshold = 200,
   emptyMessage = "暂无内容",
   ListFooterComponent,
+  categoryKey,
 }) => {
   const flatListRef = useRef<FlatList<any>>(null);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
@@ -44,23 +50,39 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing, columns } = responsiveConfig;
 
-  // TV 模式固定 5 列，spacing=0
   const listSpacing = deviceType === "tv" ? 0 : spacing;
   const listColumns = numColumns || (deviceType === "tv" ? 5 : columns);
 
-  // 返回鍵處理：TV 模式下可快速回頂
+  // ✅ 每次進入一個分類，把 categoryKey 推入堆疊
   useEffect(() => {
-    if (deviceType === "tv") {
-      const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
-        if (showScrollToTop) {
-          scrollToTop();
-          return true;
-        }
-        return false;
-      });
-      return () => backHandler.remove();
+    if (categoryKey) {
+      navigationStack.push(categoryKey);
     }
-  }, [showScrollToTop, deviceType]);
+    return () => {
+      if (categoryKey) {
+        const idx = navigationStack.lastIndexOf(categoryKey);
+        if (idx !== -1) navigationStack.splice(idx, 1);
+      }
+    };
+  }, [categoryKey]);
+
+  // ✅ 返回鍵邏輯：僅在 Android TV 啟用
+  useEffect(() => {
+    if (deviceType === "tv" && Platform.OS === "android") {
+      const handler = () => {
+        if (navigationStack.length > 0) {
+          const last = navigationStack.pop();
+          scrollToTop();
+          console.log("Back to category:", last);
+          return true; // 攔截返回鍵
+        }
+        return false; // 沒有堆疊，交給系統
+      };
+
+      const sub = BackHandler.addEventListener("hardwareBackPress", handler);
+      return () => sub.remove();
+    }
+  }, []);
 
   const scrollToTop = () => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -139,6 +161,10 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
           setShowScrollToTop(offsetY > loadMoreThreshold);
         }}
         scrollEventThrottle={16}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
       />
       {deviceType !== "tv" && (
         <TouchableOpacity
@@ -153,7 +179,6 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   );
 };
 
-// ✅ 改成獨立函數並加上 ViewStyle 型別
 const getScrollToTopButtonStyle = (spacing: number, visible: boolean): ViewStyle => ({
   position: "absolute",
   right: spacing,

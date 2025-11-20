@@ -10,7 +10,7 @@ interface UpdateState {
   // 状态
   updateAvailable: boolean;
   currentVersion: string;
-  upstreamVersion: string; // 新增：保留 oriontv.org 的版本資訊
+  upstreamVersion: string;
   remoteVersion: string;
   downloadUrl: string;
   downloading: boolean;
@@ -20,11 +20,16 @@ interface UpdateState {
   lastCheckTime: number;
   skipVersion: string | null;
   showUpdateModal: boolean;
-  isLatestVersion: boolean; // 新增：是否已是最新版本
-  
+  isLatestVersion: boolean;
+
+  // 新增字段
+  availableVersions: string[];
+  baselineVersion: string;
+  currentTarget: "dev" | "tag";
+
   // 操作
   checkForUpdate: (silent?: boolean) => Promise<void>;
-  startDownload: () => Promise<void>;
+  handleDownload: (version: string) => Promise<void>;
   installUpdate: () => Promise<void>;
   setShowUpdateModal: (show: boolean) => void;
   skipThisVersion: () => Promise<void>;
@@ -50,36 +55,40 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   lastCheckTime: 0,
   skipVersion: null,
   showUpdateModal: false,
-  isLatestVersion: false, // 新增：初始为false
+  isLatestVersion: false,
+
+  // 新增字段
+  availableVersions: [],
+  baselineVersion: '',
+  currentTarget: "dev", // 默认 dev，可根据环境变量或配置修改
 
   // 检查更新
   checkForUpdate: async (silent = false) => {
     try {
       set({ error: null, isLatestVersion: false });
 
-      // 获取跳过的版本
       const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
-      
-      const versionInfo = await updateService.checkVersion();
-      const isUpdateAvailable = updateService.isUpdateAvailable(versionInfo.version);
-      
-      // 如果有更新且不是要跳过的版本
-      const shouldShowUpdate = isUpdateAvailable && versionInfo.version !== skipVersion;
 
-      // 检查是否已经是最新版本
+      const { currentTarget } = get();
+      const versionInfo = await updateService.checkVersion(currentTarget);
+
+      const isUpdateAvailable = updateService.isUpdateAvailable(versionInfo.latestVersion);
+      const shouldShowUpdate = isUpdateAvailable && versionInfo.latestVersion !== skipVersion;
       const isLatest = !isUpdateAvailable;
+
       set({
         upstreamVersion: versionInfo.upstreamVersion ?? '',
-        remoteVersion: versionInfo.version,
+        remoteVersion: versionInfo.latestVersion,
         downloadUrl: versionInfo.downloadUrl,
         updateAvailable: isUpdateAvailable,
         lastCheckTime: Date.now(),
         skipVersion,
         showUpdateModal: shouldShowUpdate && !silent,
         isLatestVersion: isLatest,
+        availableVersions: versionInfo.availableVersions,
+        baselineVersion: versionInfo.baselineVersion,
       });
 
-      // 如果是手动检查且已是最新版本，显示提示
       if (!silent && isLatest) {
         Toast.show({
           type: 'success',
@@ -89,14 +98,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         });
       }
 
-      // 保存最后检查时间
-      await AsyncStorage.setItem(
-        STORAGE_KEYS.LAST_CHECK_TIME,
-        Date.now().toString()
-      );
+      await AsyncStorage.setItem(STORAGE_KEYS.LAST_CHECK_TIME, Date.now().toString());
     } catch (error) {
-      // console.info('检查更新失败:', error);
-      set({ 
+      set({
         error: error instanceof Error ? error.message : '检查更新失败',
         updateAvailable: false,
         isLatestVersion: false,
@@ -104,37 +108,25 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
-  // 开始下载
-  startDownload: async () => {
-    const { downloadUrl } = get();
-    
-    if (!downloadUrl) {
-      set({ error: '下载地址无效' });
-      return;
-    }
-
+  // 下载指定版本
+  handleDownload: async (version: string) => {
+    const { currentTarget } = get();
     try {
-      set({ 
-        downloading: true, 
-        downloadProgress: 0, 
-        error: null 
-      });
+      set({ downloading: true, downloadProgress: 0, error: null });
 
       const filePath = await updateService.downloadApk(
-        downloadUrl,
-        (progress) => {
-          set({ downloadProgress: progress });
-        }
+        version.split(" ")[1],
+        currentTarget,
+        (progress) => set({ downloadProgress: progress })
       );
 
-      set({ 
+      set({
         downloadedPath: filePath,
         downloading: false,
         downloadProgress: 100,
       });
     } catch (error) {
-      // console.info('下载失败:', error);
-      set({ 
+      set({
         downloading: false,
         downloadProgress: 0,
         error: error instanceof Error ? error.message : '下载失败',
@@ -145,43 +137,31 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   // 安装更新
   installUpdate: async () => {
     const { downloadedPath } = get();
-    
     if (!downloadedPath) {
       set({ error: '安装文件不存在' });
       return;
     }
-
     try {
       await updateService.installApk(downloadedPath);
-      // 安装开始后，关闭弹窗
       set({ showUpdateModal: false });
     } catch (error) {
       logger.error('安装失败:', error);
-      set({ 
-        error: error instanceof Error ? error.message : '安装失败',
-      });
+      set({ error: error instanceof Error ? error.message : '安装失败' });
     }
   },
 
-  // 设置显示更新弹窗
   setShowUpdateModal: (show: boolean) => {
     set({ showUpdateModal: show });
   },
 
-  // 跳过此版本
   skipThisVersion: async () => {
     const { remoteVersion } = get();
-    
     if (remoteVersion) {
       await AsyncStorage.setItem(STORAGE_KEYS.SKIP_VERSION, remoteVersion);
-      set({ 
-        skipVersion: remoteVersion,
-        showUpdateModal: false,
-      });
+      set({ skipVersion: remoteVersion, showUpdateModal: false });
     }
   },
 
-  // 重置状态
   reset: () => {
     set({
       downloading: false,
@@ -189,17 +169,18 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       downloadedPath: null,
       error: null,
       showUpdateModal: false,
-      isLatestVersion: false, // 重置时也要重置这个状态
+      isLatestVersion: false,
+      availableVersions: [],
+      baselineVersion: '',
     });
   },
 }));
 
-// 初始化时加载存储的数据
 export const initUpdateStore = async () => {
   try {
     const lastCheckTime = await AsyncStorage.getItem(STORAGE_KEYS.LAST_CHECK_TIME);
     const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
-    
+
     useUpdateStore.setState({
       lastCheckTime: lastCheckTime ? parseInt(lastCheckTime, 10) : 0,
       skipVersion: skipVersion || null,

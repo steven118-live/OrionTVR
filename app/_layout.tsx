@@ -21,7 +21,7 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("RootLayout");
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// 防止 SplashScreen 提前隐藏
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -35,32 +35,30 @@ export default function RootLayout() {
   const { checkLoginStatus } = useAuthStore();
   const { checkForUpdate, lastCheckTime } = useUpdateStore();
   const responsiveConfig = useResponsiveLayout();
-  // const { refreshPlayRecords, initEpisodeSelection } = useHomeStore();
   const _home: any = useHomeStore();
   const refreshPlayRecords = _home.refreshPlayRecords as any;
   const initEpisodeSelection = _home.initEpisodeSelection as any;
 
   const apiStatus = useApiConfig();
+  const hasInitialized = useRef(false);
 
-  const hasInitialized = useRef(false); // 初始化鎖
-
-  // 初始化設定
+  // 初始化设置 & 更新存储
   useEffect(() => {
     const initializeApp = async () => {
       await loadSettings();
     };
     initializeApp();
-    initUpdateStore(); // 初始化更新存储
+    initUpdateStore();
   }, [loadSettings]);
 
-  // 檢查登入狀態
+  // 检查登录状态
   useEffect(() => {
     if (apiBaseUrl) {
       checkLoginStatus(apiBaseUrl);
     }
   }, [apiBaseUrl, checkLoginStatus]);
 
-  // 字型載入完成後隱藏 Splash
+  // 字体加载完成后隐藏 Splash
   useEffect(() => {
     if (loaded || error) {
       SplashScreen.hideAsync();
@@ -70,38 +68,54 @@ export default function RootLayout() {
     }
   }, [loaded, error]);
 
-  // API 驗證成功後才刷新最近播放 & 初始化選集 & 檢查更新
+  // API 验证成功后刷新播放记录 & 初始化选集 & 检查更新
   useEffect(() => {
     if (!apiStatus.isValid || (!loaded && !error) || hasInitialized.current) return;
     hasInitialized.current = true;
 
-    const updateTimer = setTimeout(() => {
-      if (loaded && UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
-        const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
-        if (shouldCheck) {
-          checkForUpdate(true);
-        }
+    // 启动时立即检查一次更新
+    if (UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
+      const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
+      if (shouldCheck) {
+        checkForUpdate(true);
       }
+    }
 
-      const playbackTimer = setTimeout(async () => {
-        try {
-          await refreshPlayRecords();
-        } catch (err) {
-          logger.warn("播放紀錄刷新失敗", err);
-          // useHomeStore.getState().setPlayRecords([]); // fallback 空陣列，確保 UI 不空白
-          (useHomeStore.getState() as any).setPlayRecords?.([]); // optional call
-        } finally {
-          initEpisodeSelection(); // 確保初始化選集，不受錯誤影響
-        }
-      }, 2000);
+    // 定时检查更新
+    let updateInterval: NodeJS.Timeout | null = null;
+    if (UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
+      updateInterval = setInterval(() => {
+        checkForUpdate(true);
+      }, UPDATE_CONFIG.CHECK_INTERVAL);
+    }
 
-      return () => clearTimeout(playbackTimer);
-    }, 1000);
+    // 刷新播放记录（延迟 2 秒，避免和初始化冲突）
+    const playbackTimer = setTimeout(async () => {
+      try {
+        await refreshPlayRecords();
+      } catch (err) {
+        logger.warn("播放记录刷新失败", err);
+        (useHomeStore.getState() as any).setPlayRecords?.([]);
+      } finally {
+        initEpisodeSelection();
+      }
+    }, 2000);
 
-    return () => clearTimeout(updateTimer);
-  }, [apiStatus.isValid, refreshPlayRecords, initEpisodeSelection, loaded, error, lastCheckTime, checkForUpdate,]);
+    return () => {
+      clearTimeout(playbackTimer);
+      if (updateInterval) clearInterval(updateInterval);
+    };
+  }, [
+    apiStatus.isValid,
+    refreshPlayRecords,
+    initEpisodeSelection,
+    loaded,
+    error,
+    lastCheckTime,
+    checkForUpdate,
+  ]);
 
-  // 遠端控制伺服器啟停
+  // 远程控制服务器启停
   useEffect(() => {
     if (remoteInputEnabled && responsiveConfig.deviceType !== "mobile") {
       startServer();

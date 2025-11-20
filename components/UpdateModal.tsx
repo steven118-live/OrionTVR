@@ -10,56 +10,31 @@ export function UpdateModal() {
     showUpdateModal,
     currentVersion,
     remoteVersion,
+    availableVersions,   // 可选版本清单
+    baselineVersion,     // baseline 版本
     downloading,
     downloadProgress,
     error,
     setShowUpdateModal,
-    startDownload,
+    handleDownload,      // 下载函数
     installUpdate,
     skipThisVersion,
     downloadedPath,
   } = useUpdateStore();
 
   const updateButtonRef = React.useRef<View>(null);
-  const laterButtonRef = React.useRef<View>(null);
-  const skipButtonRef = React.useRef<View>(null);
-
-  async function handleUpdate() {
-    if (!downloading && !downloadedPath) {
-      // 开始下载
-      await startDownload();
-    } else if (downloadedPath) {
-      // 已下载完成，安装
-      await installUpdate();
-    }
-  }
 
   function handleLater() {
     setShowUpdateModal(false);
   }
 
-  async function handleSkip() {
-    await skipThisVersion();
-  }
-
   React.useEffect(() => {
     if (showUpdateModal && Platform.isTV) {
-      // TV平台自动聚焦到更新按钮
       setTimeout(() => {
         updateButtonRef.current?.focus();
       }, 100);
     }
   }, [showUpdateModal]);
-
-  const getButtonText = () => {
-    if (downloading) {
-      return `下载中 ${downloadProgress}%`;
-    } else if (downloadedPath) {
-      return "立即安装";
-    } else {
-      return "立即更新";
-    }
-  };
 
   return (
     <Modal visible={showUpdateModal} transparent animationType="fade" onRequestClose={handleLater}>
@@ -69,9 +44,32 @@ export function UpdateModal() {
 
           <View style={styles.versionInfo}>
             <ThemedText style={styles.versionText}>当前版本: v{currentVersion}</ThemedText>
-            <ThemedText style={styles.arrow}>→</ThemedText>
-            <ThemedText style={[styles.versionText, styles.newVersion]}>新版本: v{remoteVersion}</ThemedText>
           </View>
+
+          {/* 渲染可选版本清单 */}
+          {availableVersions?.map((ver, idx) => {
+            const isBaseline = ver.includes(baselineVersion);
+            return (
+              <View key={idx} style={styles.versionRow}>
+                <ThemedText style={styles.versionText}>
+                  {ver} {isBaseline ? "（切换前必须安装）" : ""}
+                </ThemedText>
+                <StyledButton
+                  ref={idx === 0 ? updateButtonRef : undefined}
+                  onPress={() => handleDownload(ver)}
+                  disabled={downloading}
+                  variant="primary"
+                  style={styles.smallButton}
+                >
+                  {downloading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <ThemedText style={styles.buttonText}>下载</ThemedText>
+                  )}
+                </StyledButton>
+              </View>
+            );
+          })}
 
           {downloading && (
             <View style={styles.progressContainer}>
@@ -85,30 +83,22 @@ export function UpdateModal() {
           {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
 
           <View style={styles.buttonContainer}>
-            <StyledButton
-              ref={updateButtonRef}
-              onPress={handleUpdate}
-              disabled={downloading && !downloadedPath}
-              variant="primary"
-              style={styles.button}
-            >
-              {downloading && !downloadedPath ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <ThemedText style={styles.buttonText}>{getButtonText()}</ThemedText>
-              )}
-            </StyledButton>
-
             {!downloading && !downloadedPath && (
               <>
-                <StyledButton ref={laterButtonRef} onPress={handleLater} variant="primary" style={styles.button}>
-                  <ThemedText style={[styles.buttonText]}>稍后再说</ThemedText>
+                <StyledButton onPress={handleLater} variant="primary" style={styles.button}>
+                  <ThemedText style={styles.buttonText}>稍后再说</ThemedText>
                 </StyledButton>
 
-                <StyledButton ref={skipButtonRef} onPress={handleSkip} variant="primary" style={styles.button}>
-                  <ThemedText style={[styles.buttonText]}>跳过此版本</ThemedText>
+                <StyledButton onPress={skipThisVersion} variant="primary" style={styles.button}>
+                  <ThemedText style={styles.buttonText}>跳过此版本</ThemedText>
                 </StyledButton>
               </>
+            )}
+
+            {downloadedPath && (
+              <StyledButton onPress={installUpdate} variant="primary" style={styles.button}>
+                <ThemedText style={styles.buttonText}>立即安装</ThemedText>
+              </StyledButton>
             )}
           </View>
         </View>
@@ -142,20 +132,18 @@ const styles = StyleSheet.create({
   versionInfo: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  versionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 12,
   },
   versionText: {
     fontSize: Platform.isTV ? 18 : 16,
     color: Colors.dark.text,
-  },
-  newVersion: {
-    color: Colors.dark.primary || "#00bb5e",
-    fontWeight: "bold",
-  },
-  arrow: {
-    fontSize: Platform.isTV ? 20 : 18,
-    color: Colors.dark.text,
-    marginHorizontal: 12,
   },
   progressContainer: {
     width: "100%",
@@ -186,13 +174,18 @@ const styles = StyleSheet.create({
   buttonContainer: {
     width: "100%",
     gap: 12,
-    justifyContent: "center", // 居中对齐
+    justifyContent: "center",
     alignItems: "center",
   },
   button: {
     width: "80%",
   },
-
+  smallButton: {
+    width: 100,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   buttonText: {
     fontSize: Platform.isTV ? 18 : 16,
     fontWeight: "600",

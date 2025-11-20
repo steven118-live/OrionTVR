@@ -3,19 +3,22 @@ import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { ThemedText } from "../ThemedText";
 import { StyledButton } from "../StyledButton";
 import { useUpdateStore } from "@/stores/updateStore";
-// import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 
 export function UpdateSection() {
-  const { 
-    currentVersion, 
+  const {
+    currentVersion,
     upstreamVersion,
-    remoteVersion, 
-    updateAvailable, 
-    downloading, 
-    downloadProgress, 
+    availableVersions,   // 可选版本清单
+    baselineVersion,     // baseline 版本
+    updateAvailable,
+    downloading,
+    downloadProgress,
     checkForUpdate,
     isLatestVersion,
-    error
+    error,
+    handleDownload,      // 下载函数
+    skipThisVersion,     // 跳过此版本
+    remoteVersion,
   } = useUpdateStore();
 
   const [checking, setChecking] = React.useState(false);
@@ -35,7 +38,7 @@ export function UpdateSection() {
 
       <View style={styles.row}>
         <ThemedText style={styles.label}>原始码最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{upstreamVersion || 'x.x.xx'}</ThemedText>
+        <ThemedText style={styles.value}>v{upstreamVersion || "x.x.xx"}</ThemedText>
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>当前版本</ThemedText>
@@ -44,12 +47,30 @@ export function UpdateSection() {
 
       {updateAvailable && (
         <View style={styles.row}>
-          <ThemedText style={styles.label}>最新版本</ThemedText>
-          <ThemedText style={[styles.value, styles.newVersion]}>v{remoteVersion}</ThemedText>
+          <ThemedText style={styles.label}>可选版本</ThemedText>
         </View>
       )}
 
-      {isLatestVersion && remoteVersion && (
+      {/* 渲染可选版本清单 */}
+      {availableVersions?.map((ver, idx) => {
+        const isBaseline = ver.includes(baselineVersion);
+        return (
+          <View key={idx} style={styles.row}>
+            <ThemedText style={styles.label}>
+              {ver} {isBaseline ? "（切换前必须安装）" : ""}
+            </ThemedText>
+            <StyledButton
+              onPress={() => handleDownload(ver)}
+              disabled={downloading}
+              style={styles.smallButton}
+            >
+              <ThemedText style={styles.buttonText}>下载</ThemedText>
+            </StyledButton>
+          </View>
+        );
+      })}
+
+      {isLatestVersion && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>状态</ThemedText>
           <ThemedText style={[styles.value, styles.latestVersion]}>已是最新版本</ThemedText>
@@ -71,20 +92,27 @@ export function UpdateSection() {
       )}
 
       <View style={styles.buttonContainer}>
-        <StyledButton onPress={handleCheckUpdate} disabled={checking || downloading} style={styles.button}>
+        <StyledButton
+          onPress={handleCheckUpdate}
+          disabled={checking || downloading}
+          style={styles.button}
+        >
           {checking ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <ThemedText style={styles.buttonText}>检查更新</ThemedText>
           )}
         </StyledButton>
-      </View>
 
-      {/* {UPDATE_CONFIG.AUTO_CHECK && (
-        <ThemedText style={styles.hint}>
-          自动检查更新已开启，每{UPDATE_CONFIG.CHECK_INTERVAL / (60 * 60 * 1000)}小时检查一次
-        </ThemedText>
-      )} */}
+        {/* 跳过此版本按钮 */}
+        <StyledButton
+          onPress={() => skipThisVersion()}
+          disabled={!remoteVersion}
+          style={styles.button}
+        >
+          <ThemedText style={styles.buttonText}>跳过此版本</ThemedText>
+        </StyledButton>
+      </View>
     </View>
   );
 }
@@ -119,10 +147,6 @@ const styles = StyleSheet.create({
   value: {
     fontSize: Platform.isTV ? 18 : 16,
   },
-  newVersion: {
-    color: "#00bb5e",
-    fontWeight: "bold",
-  },
   latestVersion: {
     color: "#00bb5e",
     fontWeight: "500",
@@ -135,26 +159,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 16,
-    justifyContent: "center", // 居中对齐
+    justifyContent: "center",
     alignItems: "center",
   },
   button: {
-    width: "90%",
+    width: "40%",
     ...(Platform.isTV && {
-      // TV平台焦点样式
       borderWidth: 2,
       borderColor: "transparent",
     }),
+  },
+  smallButton: {
+    width: 80,
+    height: 32,
+    justifyContent: "center",
+    alignItems: "center",
   },
   buttonText: {
     color: "#ffffff",
     fontSize: Platform.isTV ? 16 : 14,
     fontWeight: "500",
-  },
-  hint: {
-    fontSize: Platform.isTV ? 14 : 12,
-    color: "#666",
-    marginTop: 12,
-    textAlign: "center",
   },
 });
