@@ -1,7 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import {
   View,
-  StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
   BackHandler,
@@ -13,9 +12,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 
-// 導航堆疊：用來記錄分類層級
-const navigationStack: string[] = [];
-
 interface CustomScrollViewProps {
   data: any[];
   renderItem: ({ item, index }: { item: any; index: number }) => React.ReactNode;
@@ -24,10 +20,13 @@ interface CustomScrollViewProps {
   loadingMore?: boolean;
   error?: string | null;
   onEndReached?: () => void;
-  loadMoreThreshold?: number; // 控制返回頂部按鈕出現的滾動距離閾值，不影響效能
+  loadMoreThreshold?: number;
   emptyMessage?: string;
   ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
-  categoryKey?: string; // ✅ 當前分類的識別字串
+  categoryKey?: string;
+  // ✅ 新增：由頁面傳入焦點回復方法
+  categoryAnchorFocus?: () => void; // 本頁入口
+  parentAnchorFocus?: () => void;   // 上一層入口
 }
 
 const CustomScrollView: React.FC<CustomScrollViewProps> = ({
@@ -41,7 +40,8 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   loadMoreThreshold = 200,
   emptyMessage = "暂无内容",
   ListFooterComponent,
-  categoryKey,
+  categoryAnchorFocus,
+  parentAnchorFocus,
 }) => {
   const flatListRef = useRef<FlatList<any>>(null);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
@@ -53,36 +53,43 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   const listSpacing = deviceType === "tv" ? 0 : spacing;
   const listColumns = numColumns || (deviceType === "tv" ? 5 : columns);
 
-  // ✅ 每次進入一個分類，把 categoryKey 推入堆疊
-  useEffect(() => {
-    if (categoryKey) {
-      navigationStack.push(categoryKey);
-    }
-    return () => {
-      if (categoryKey) {
-        const idx = navigationStack.lastIndexOf(categoryKey);
-        if (idx !== -1) navigationStack.splice(idx, 1);
-      }
-    };
-  }, [categoryKey]);
+  // 允許 "page" | "parent" | null
+  const backStageRef = useRef<"page" | "parent" | null>(null);
 
-  // ✅ 返回鍵邏輯：僅在 Android TV 啟用
   useEffect(() => {
     if (deviceType === "tv" && Platform.OS === "android") {
       const handler = () => {
-        if (navigationStack.length > 0) {
-          const last = navigationStack.pop();
+        const stage = backStageRef.current;
+
+        // 第一次返回：本頁入口
+        if (stage === null) {
+          categoryAnchorFocus?.();
           scrollToTop();
-          console.log("Back to category:", last);
-          return true; // 攔截返回鍵
+          backStageRef.current = "page";
+          return true;
         }
-        return false; // 沒有堆疊，交給系統
+
+        // 第二次返回：上一層入口（若存在）
+        if (stage === "page") {
+          if (parentAnchorFocus) {
+            parentAnchorFocus();
+            backStageRef.current = "parent";
+            return true;
+          }
+          // 沒有上一層 → 放行導航
+          backStageRef.current = null;
+          return false;
+        }
+
+        // 第三次後：放行導航並重置
+        backStageRef.current = null;
+        return false;
       };
 
       const sub = BackHandler.addEventListener("hardwareBackPress", handler);
       return () => sub.remove();
     }
-  }, []);
+  }, [deviceType, categoryAnchorFocus, parentAnchorFocus]);
 
   const scrollToTop = () => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -90,13 +97,11 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
 
   const renderFooter = () => {
     if (ListFooterComponent) {
-      if (React.isValidElement(ListFooterComponent)) {
-        return ListFooterComponent;
-      } else if (typeof ListFooterComponent === "function") {
+      if (React.isValidElement(ListFooterComponent)) return ListFooterComponent;
+      if (typeof ListFooterComponent === "function") {
         const Component = ListFooterComponent as React.ComponentType<any>;
         return <Component />;
       }
-      return null;
     }
     if (loadingMore) {
       return <ActivityIndicator style={{ marginVertical: 20 }} size="large" />;
@@ -111,7 +116,6 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
       </View>
     );
   }
-
   if (error) {
     return (
       <View style={commonStyles.center}>
@@ -121,7 +125,6 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
       </View>
     );
   }
-
   if (data.length === 0) {
     return (
       <View style={commonStyles.center}>
@@ -149,9 +152,7 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
         )}
         numColumns={listColumns}
         contentContainerStyle={{ paddingHorizontal: listSpacing }}
-        columnWrapperStyle={{
-          columnGap: deviceType === "tv" ? 0 : listSpacing,
-        }}
+        columnWrapperStyle={{ columnGap: deviceType === "tv" ? 0 : listSpacing }}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.5}
         ListFooterComponent={renderFooter()}
@@ -172,7 +173,7 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
           onPress={scrollToTop}
           activeOpacity={0.8}
         >
-          <ThemedText>⬆️</ThemedText>
+          <ThemedText>{"\u2B06"}</ThemedText>
         </TouchableOpacity>
       )}
     </View>

@@ -1,5 +1,16 @@
 import React, { useEffect, useCallback, useRef, useState } from "react";
-import { View, StyleSheet, ActivityIndicator, FlatList, Pressable, Animated, StatusBar, Platform, BackHandler, ToastAndroid } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  Animated,
+  StatusBar,
+  Platform,
+  BackHandler,
+  ToastAndroid,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -26,7 +37,11 @@ export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
 
-  // 响应式布局配置
+  // 焦點狀態：控制返回鍵焦點回復
+  const [preferCategory, setPreferCategory] = useState(false);
+  const [preferParent, setPreferParent] = useState(false);
+
+  // 響應式配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
@@ -53,78 +68,53 @@ export default function HomeScreen() {
     }, [refreshPlayRecords])
   );
 
-    // 双击返回退出逻辑（只限当前页面）
+  // 雙擊返回退出（僅 Android）
   const backPressTimeRef = useRef<number | null>(null);
-
   useFocusEffect(
     useCallback(() => {
-    const handleBackPress = () => {
-      const now = Date.now();
-
-      // 如果还没按过返回键，或距离上次超过2秒
-      if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
-        backPressTimeRef.current = now;
-        ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
-        return true; // 拦截返回事件，不退出
-      }
-
-      // 两次返回键间隔小于2秒，退出应用
-      BackHandler.exitApp();
-      return true;
-    };
-
-    // 仅限 Android 平台启用此功能
-    if (Platform.OS === "android") {
-      const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
-
-      // 返回首页时重置状态
-      return () => {
-        backHandler.remove();
-        backPressTimeRef.current = null;
+      const handleBackPress = () => {
+        const now = Date.now();
+        if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
+          backPressTimeRef.current = now;
+          ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
+          return true;
+        }
+        BackHandler.exitApp();
+        return true;
       };
-    }
-  }, [])
-);
+      if (Platform.OS === "android") {
+        const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
+        return () => {
+          backHandler.remove();
+          backPressTimeRef.current = null;
+        };
+      }
+    }, [])
+  );
 
-  // 统一的数据获取逻辑
+  // 資料抓取
   useEffect(() => {
     if (!selectedCategory) return;
 
-    // 如果是容器分类且没有选择标签，设置默认标签
     if (selectedCategory.tags && !selectedCategory.tag) {
       const defaultTag = selectedCategory.tags[0];
       setSelectedTag(defaultTag);
       selectCategory({ ...selectedCategory, tag: defaultTag });
       return;
     }
-
-    // 只有在API配置完成且分类有效时才获取数据
     if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
-      // 对于有标签的分类，需要确保有标签才获取数据
-      if (selectedCategory.tags && selectedCategory.tag) {
-        fetchInitialData();
-      }
-      // 对于无标签的分类，直接获取数据
-      else if (!selectedCategory.tags) {
-        fetchInitialData();
-      }
+      fetchInitialData();
     }
-  }, [
-    selectedCategory,
-    selectedCategory?.tag,
-    apiConfigStatus.isConfigured,
-    apiConfigStatus.needsConfiguration,
-    fetchInitialData,
-    selectCategory,
-  ]);
+  }, [selectedCategory, apiConfigStatus, fetchInitialData, selectCategory]);
 
-  // 清除错误状态的逻辑
+  // 清錯
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) {
       clearError();
     }
   }, [apiConfigStatus.needsConfiguration, error, clearError]);
 
+  // 內容淡入
   useEffect(() => {
     if (!loading && contentData.length > 0) {
       Animated.timing(fadeAnim, {
@@ -140,13 +130,15 @@ export default function HomeScreen() {
   const handleCategorySelect = (category: Category) => {
     setSelectedTag(null);
     selectCategory(category);
+    // 進到新分類時重置焦點偏好
+    setPreferCategory(false);
+    setPreferParent(false);
   };
 
   const handleTagSelect = (tag: string) => {
     setSelectedTag(tag);
     if (selectedCategory) {
-      const categoryWithTag = { ...selectedCategory, tag: tag };
-      selectCategory(categoryWithTag);
+      selectCategory({ ...selectedCategory, tag });
     }
   };
 
@@ -159,26 +151,13 @@ export default function HomeScreen() {
         isSelected={isSelected}
         style={dynamicStyles.categoryButton}
         textStyle={dynamicStyles.categoryText}
+        hasTVPreferredFocus={preferCategory && isSelected} // 本頁入口焦點
       />
     );
   };
 
-  const renderContentItem = ({ item }: { item: RowItem; index: number }) => (
-    <VideoCard
-      id={item.id}
-      source={item.source}
-      title={item.title}
-      poster={item.poster}
-      year={item.year}
-      rate={item.rate}
-      progress={item.progress}
-      playTime={item.play_time}
-      episodeIndex={item.episodeIndex}
-      sourceName={item.sourceName}
-      totalEpisodes={item.totalEpisodes}
-      api={api}
-      onRecordDeleted={fetchInitialData}
-    />
+  const renderContentItem = ({ item }: { item: RowItem }) => (
+    <VideoCard {...item} api={api} onRecordDeleted={fetchInitialData} />
   );
 
   const renderFooter = () => {
@@ -186,23 +165,35 @@ export default function HomeScreen() {
     return <ActivityIndicator style={{ marginVertical: 20 }} size="large" />;
   };
 
-  // 检查是否需要显示API配置提示
-  const shouldShowApiConfig = apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags;
+  // API 配置提示
+  const shouldShowApiConfig =
+    apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags;
 
-  // TV端和平板端的顶部导航
+  // TV/平板頂部導航
   const renderHeader = () => {
-    if (deviceType === "mobile") {
-      // 移动端不显示顶部导航，使用底部Tab导航
-      return null;
-    }
-
+    if (deviceType === "mobile") return null;
     return (
       <View style={dynamicStyles.headerContainer}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <ThemedText style={dynamicStyles.headerTitle}>首页</ThemedText>
-          <Pressable android_ripple={Platform.isTV || deviceType !== 'tv'? { color: 'transparent' } : { color: Colors.dark.link }} style={{ marginLeft: 20 }} onPress={() => router.push("/live")}>
+          <Pressable
+            android_ripple={
+              Platform.isTV || deviceType !== "tv"
+                ? { color: "transparent" }
+                : { color: Colors.dark.link }
+            }
+            style={{ marginLeft: 20 }}
+            onPress={() => router.push("/live")}
+          >
             {({ focused }) => (
-              <ThemedText style={[dynamicStyles.headerTitle, { color: focused ? "white" : "grey" }]}>直播</ThemedText>
+              <ThemedText
+                style={[
+                  dynamicStyles.headerTitle,
+                  { color: focused ? "white" : "grey" },
+                ]}
+              >
+                直播
+              </ThemedText>
             )}
           </Pressable>
         </View>
@@ -210,11 +201,7 @@ export default function HomeScreen() {
           <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push("/favorites")} variant="ghost">
             <Heart color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
-          <StyledButton
-            style={dynamicStyles.iconButton}
-            onPress={() => router.push({ pathname: "/search" })}
-            variant="ghost"
-          >
+          <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push({ pathname: "/search" })} variant="ghost">
             <Search color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
           <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push("/settings")} variant="ghost">
@@ -229,6 +216,7 @@ export default function HomeScreen() {
       </View>
     );
   };
+
 
   // 动态样式
   const dynamicStyles = StyleSheet.create({
@@ -279,13 +267,13 @@ export default function HomeScreen() {
 
   const content = (
     <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
-      {/* 状态栏 */}
+      {/* 狀態欄 */}
       {deviceType === "mobile" && <StatusBar barStyle="light-content" />}
 
-      {/* 顶部导航 */}
+      {/* 頂部導航 */}
       {renderHeader()}
 
-      {/* 分类选择器 */}
+      {/* 分類選擇器 */}
       <View style={dynamicStyles.categoryContainer}>
         <FlatList
           data={categories}
@@ -297,7 +285,7 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* 子分类标签 */}
+      {/* 子分類標籤 */}
       {selectedCategory && selectedCategory.tags && (
         <View style={dynamicStyles.categoryContainer}>
           <FlatList
@@ -324,7 +312,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* 内容网格 */}
+      {/* 內容網格 */}
       {shouldShowApiConfig ? (
         <View style={commonStyles.center}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
@@ -366,16 +354,24 @@ export default function HomeScreen() {
             loadMoreThreshold={LOAD_MORE_THRESHOLD}
             emptyMessage={selectedCategory?.tags ? "请选择一个子分类" : "该分类下暂无内容"}
             ListFooterComponent={renderFooter}
+            // 返回鍵焦點回復
+            categoryAnchorFocus={() => {
+              setPreferParent(false);
+              setPreferCategory(true);   // 第一次返回 → 本頁入口
+            }}
+            parentAnchorFocus={() => {
+              setPreferCategory(false);
+              setPreferParent(true);     // 第二次返回 → 上一層入口
+            }}
           />
         </Animated.View>
       )}
     </ThemedView>
   );
 
-  // 根据设备类型决定是否包装在响应式导航中
+  // 裝置類型包裝
   if (deviceType === "tv") {
     return content;
   }
-
   return <ResponsiveNavigation>{content}</ResponsiveNavigation>;
 }

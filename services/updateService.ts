@@ -1,12 +1,12 @@
-import * as FileSystem from 'expo-file-system';
-import * as IntentLauncher from 'expo-intent-launcher';
-import Toast from 'react-native-toast-message';
-import { version as currentVersion } from '../package.json';
-import { UPDATE_CONFIG } from '../constants/UpdateConfig';
-import Logger from '@/utils/Logger';
-import { Platform } from 'react-native';
+import * as FileSystem from "expo-file-system";
+import * as IntentLauncher from "expo-intent-launcher";
+import Toast from "react-native-toast-message";
+import { version as currentVersion } from "../package.json";
+import { UPDATE_CONFIG } from "../constants/UpdateConfig";
+import Logger from "@/utils/Logger";
+import { Platform } from "react-native";
 
-const logger = Logger.withTag('UpdateService');
+const logger = Logger.withTag("UpdateService");
 
 interface VersionInfo {
   currentTarget: "dev" | "tag";
@@ -18,7 +18,7 @@ interface VersionInfo {
   updatedAt?: string; // 新增：來源的時間戳（保留原始碼方式）
 }
 
-const ANDROID_MIME_TYPE = 'application/vnd.android.package-archive';
+const ANDROID_MIME_TYPE = "application/vnd.android.package-archive";
 
 class UpdateService {
   private static instance: UpdateService;
@@ -34,10 +34,17 @@ class UpdateService {
    * --------------------------------------------------------------- */
   async checkVersion(currentBuildTarget: "dev" | "tag"): Promise<VersionInfo> {
     try {
-      const [responseDev, responseTag] = await Promise.all([
-        fetch(UPDATE_CONFIG.CHECK_SOURCES.dev),
-        fetch(UPDATE_CONFIG.CHECK_SOURCES.tag),
-      ]);
+      const devUrl =
+        typeof UPDATE_CONFIG.CHECK_SOURCES.dev === "function"
+          ? UPDATE_CONFIG.CHECK_SOURCES.dev(currentVersion)
+          : UPDATE_CONFIG.CHECK_SOURCES.dev;
+
+      const tagUrl =
+        typeof UPDATE_CONFIG.CHECK_SOURCES.tag === "function"
+          ? UPDATE_CONFIG.CHECK_SOURCES.tag(currentVersion)
+          : UPDATE_CONFIG.CHECK_SOURCES.tag;
+
+      const [responseDev, responseTag] = await Promise.all([fetch(devUrl), fetch(tagUrl)]);
 
       const devPackage = responseDev.ok ? await responseDev.json() : { version: "", updated_at: "" };
       const tagPackage = responseTag.ok ? await responseTag.json() : { version: "", updated_at: "" };
@@ -71,16 +78,16 @@ class UpdateService {
   private async cleanOldApkFiles(): Promise<void> {
     try {
       const dirUri = FileSystem.documentDirectory;
-      if (!dirUri) throw new Error('Document directory is not available');
+      if (!dirUri) throw new Error("Document directory is not available");
 
       const listing = await FileSystem.readDirectoryAsync(dirUri);
-      const apkFiles = listing.filter(name => name.endsWith('.apk'));
+      const apkFiles = listing.filter((name) => name.endsWith(".apk"));
 
       if (apkFiles.length <= 2) return;
 
       const sorted = apkFiles.sort((a, b) => {
-        const numA = parseInt(a.replace(/[^0-9]/g, ''), 10);
-        const numB = parseInt(b.replace(/[^0-9]/g, ''), 10);
+        const numA = parseInt(a.replace(/[^0-9]/g, ""), 10);
+        const numB = parseInt(b.replace(/[^0-9]/g, ""), 10);
         return numB - numA;
       });
 
@@ -95,17 +102,15 @@ class UpdateService {
         }
       }
     } catch (e) {
-      logger.warn('cleanOldApkFiles error', e);
+      logger.warn("cleanOldApkFiles error", e);
     }
   }
 
-  /** --------------------------------------------------------------
-   *  3️⃣ 下载 APK：使用 UpdateConfig.getDownloadUrl
-   * --------------------------------------------------------------- */
+  // 下載 APK，含重試與進度回呼
   async downloadApk(
     version: string,
     buildTarget: "dev" | "tag",
-    onProgress?: (percent: number) => void,
+    onProgress?: (percent: number) => void
   ): Promise<string> {
     const maxRetries = 3;
     await this.cleanOldApkFiles();
@@ -122,14 +127,14 @@ class UpdateService {
           url,
           fileUri,
           {},
-          progress => {
+          (progress) => {
             if (onProgress && progress.totalBytesExpectedToWrite) {
               const percent = Math.floor(
-                (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100,
+                (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100
               );
               onProgress(percent);
             }
-          },
+          }
         );
 
         const result = await downloadResumable.downloadAsync();
@@ -137,22 +142,18 @@ class UpdateService {
           logger.debug(`APK downloaded to ${result.uri}`);
           return result.uri;
         } else {
-          throw new Error('Download failed: No URI available');
+          throw new Error("Download failed: No URI available");
         }
       } catch (e) {
         logger.warn(`downloadApk attempt ${attempt}/${maxRetries}`, e);
         if (attempt === maxRetries) {
-          Toast.show({
-            type: 'error',
-            text1: '下载失败',
-            text2: 'APK 下载出现错误，请检查网络',
-          });
+          Toast.show({ type: "error", text1: "下载失败", text2: "APK 下载出现错误，请检查网络" });
           throw e;
         }
-        await new Promise(r => setTimeout(r, 3_000 * attempt));
+        await new Promise((r) => setTimeout(r, 3000 * attempt));
       }
     }
-    throw new Error('Download failed');
+    throw new Error("Download failed");
   }
 
   /** --------------------------------------------------------------
@@ -164,27 +165,27 @@ class UpdateService {
 
     const contentUri = await FileSystem.getContentUriAsync(fileUri);
 
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       try {
         const flags = 1 | 0x00000010;
-        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
           data: contentUri,
           type: ANDROID_MIME_TYPE,
           flags,
         });
       } catch (e: any) {
-        if (e.message?.includes('Activity not found')) {
-          Toast.show({ type: 'error', text1: '安装失败', text2: '系统没有找到可以打开 APK 的应用，请检查系统设置' });
-        } else if (e.message?.includes('permission')) {
-          Toast.show({ type: 'error', text1: '安装失败', text2: '请在设置里允许“未知来源”安装' });
+        if (e.message?.includes("Activity not found")) {
+          Toast.show({ type: "error", text1: "安装失败", text2: "系统没有找到可以打开 APK 的应用，请检查系统设置" });
+        } else if (e.message?.includes("permission")) {
+          Toast.show({ type: "error", text1: "安装失败", text2: "请在设置里允许“未知来源”安装" });
         } else {
-          Toast.show({ type: 'error', text1: '安装失败', text2: '未知错误，请稍后重试' });
+          Toast.show({ type: "error", text1: "安装失败", text2: "未知错误，请稍后重试" });
         }
         throw e;
       }
     } else {
-      Toast.show({ type: 'error', text1: '安装失败', text2: 'iOS 设备无法直接安装 APK' });
-      throw new Error('APK install not supported on iOS');
+      Toast.show({ type: "error", text1: "安装失败", text2: "iOS 设备无法直接安装 APK" });
+      throw new Error("APK install not supported on iOS");
     }
   }
 
@@ -192,8 +193,8 @@ class UpdateService {
    *  5️⃣ 版本比对工具
    * --------------------------------------------------------------- */
   compareVersions(v1: string, v2: string): number {
-    const p1 = v1.split('.').map(Number);
-    const p2 = v2.split('.').map(Number);
+    const p1 = v1.split(".").map(Number);
+    const p2 = v2.split(".").map(Number);
     for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
       const n1 = p1[i] ?? 0;
       const n2 = p2[i] ?? 0;

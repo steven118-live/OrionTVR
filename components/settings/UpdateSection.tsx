@@ -53,11 +53,21 @@ export function UpdateSection() {
 
       {/* 渲染可选版本清单 */}
       {availableVersions?.map((ver, idx) => {
-        const isBaseline = ver.includes(baselineVersion);
+        let baselineNote = "";
+        if (ver === baselineVersion) {
+          if (ver.includes("dev")) {
+            baselineNote = "（切换到 dev版 前须安装此版）";
+          } else if (ver.includes("tag")) {
+            baselineNote = "（切换到 正式版 前须安装此版）";
+          } else {
+            baselineNote = "（切换前必须安装）";
+          }
+        }
+
         return (
           <View key={idx} style={styles.row}>
             <ThemedText style={styles.label}>
-              {ver} {isBaseline ? "（切换前必须安装）" : ""}
+              {ver} {baselineNote}
             </ThemedText>
             <StyledButton
               onPress={() => handleDownload(ver)}
@@ -87,7 +97,17 @@ export function UpdateSection() {
       {downloading && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>下载进度</ThemedText>
-          <ThemedText style={styles.value}>{downloadProgress}%</ThemedText>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <View style={styles.progressBarBackground}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${downloadProgress}%` },
+                ]}
+              />
+            </View>
+            <ThemedText style={styles.value}>{downloadProgress}%</ThemedText>
+          </View>
         </View>
       )}
 
@@ -179,5 +199,16 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: Platform.isTV ? 16 : 14,
     fontWeight: "500",
+  },
+  progressBarBackground: {
+    height: 6,
+    backgroundColor: "#333",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: 6,
+    backgroundColor: "#00bb5e",
+    borderRadius: 3,
   },
 });
