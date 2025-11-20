@@ -29,7 +29,7 @@ interface VideoCardMobileProps extends React.ComponentProps<typeof TouchableOpac
   api: API;
 }
 
-const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
+const VideoCardMobileComponent = forwardRef<View, VideoCardMobileProps>(
   (
     {
       id,
@@ -53,6 +53,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     const { cardWidth, cardHeight, spacing } = useResponsiveLayout();
     const [fadeAnim] = useState(new Animated.Value(0));
 
+    // ������ 提示：TV 版本中我們移除了隨機延遲，如果手機端列表載入慢，
+    // 您也可以考慮將 delay: Math.random() * 100 移除或設為 0。
     const longPressTriggered = useRef(false);
 
     const handlePress = () => {
@@ -92,6 +94,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         {
           text: "取消",
           style: "cancel",
+          onPress: () => { longPressTriggered.current = false; } // 新增：取消時重置
         },
         {
           text: "删除",
@@ -103,6 +106,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
             } catch (error) {
               logger.info("Failed to delete play record:", error);
               Alert.alert("错误", "删除观看记录失败，请重试");
+            } finally {
+              longPressTriggered.current = false; // 新增：確保重置
             }
           },
         },
@@ -185,7 +190,12 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
   }
 );
 
-VideoCardMobile.displayName = "VideoCardMobile";
+VideoCardMobileComponent.displayName = "VideoCardMobile";
+
+// ������ 核心優化：使用 React.memo 包裹導出
+const VideoCardMobile = React.memo(VideoCardMobileComponent);
+
+export default VideoCardMobile;
 
 const createMobileStyles = (cardWidth: number, cardHeight: number, spacing: number) => {
   return StyleSheet.create({
@@ -304,5 +314,3 @@ const createMobileStyles = (cardWidth: number, cardHeight: number, spacing: numb
     },
   });
 };
-
-export default VideoCardMobile;

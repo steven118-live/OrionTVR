@@ -31,8 +31,6 @@ import { Colors } from "@/constants/Colors";
 const LOAD_MORE_THRESHOLD = 200;
 
 // 為了型別安全，這裡我們為 StyledButton 的 ref 定義一個通用型別。
-// 由於它用於 focus()，通常指向一個 Pressable 或 View，故暫時使用 any。
-// 如果 StyledButton 導出了自己的 Ref 型別，請替換此處的 any。
 type FocusableRef = any; 
 
 export default function HomeScreen() {
@@ -42,12 +40,15 @@ export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
 
-  // ✅ 修正點 1/2: 宣告 tagButtonRef
+  // ✅ 宣告 tagButtonRef，用於將焦點移回 Tag 選擇列
   const tagButtonRef = useRef<FocusableRef>(null);
 
   // 焦點狀態：控制返回鍵焦點回復
   const [preferCategory, setPreferCategory] = useState(false);
   const [preferParent, setPreferParent] = useState(false);
+  
+  // ✅ 新增狀態：追蹤 CustomScrollView 是否在頂部 (來自 onScrollToTop)
+  const [isListAtTop, setIsListAtTop] = useState(true); 
 
   // 響應式配置
   const responsiveConfig = useResponsiveLayout();
@@ -75,6 +76,7 @@ export default function HomeScreen() {
       refreshPlayRecords();
     }, [refreshPlayRecords])
   );
+  
   // 雙擊返回退出（僅 Android）
   type BackStage = "root" | "category" | "tag";
   const backStageRef = useRef<BackStage>("root");
@@ -87,25 +89,43 @@ export default function HomeScreen() {
   
   // 這裡要綁定到你 UI 裡的 tag 按鍵 ref
   useFocusEffect(
+    // ⚠️ 修正點：將 selectedCategory 和 isListAtTop 加入依賴
     useCallback(() => {
       const handleBackPress = () => {
         const now = Date.now();
+        const currentCategory = selectedCategory; // 獲取當前分類
 
-        if (backStageRef.current === "tag") {
-          // 從子分類返回到子分類按鍵 (例如「國產劇」)
-          tagAnchorFocus?.(); // 這裡要綁定到對應的 tag anchor
-          backStageRef.current = "category";
-          return true;
+        // 判斷 1: 處於內容層 ("tag") 且列表已滾動到頂部
+        if (backStageRef.current === "tag" && isListAtTop) {
+          
+          // 檢查當前分類是否有 tags
+          if (currentCategory?.tags && currentCategory.tag) {
+            // 從內容層返回到 Tag 選擇層
+            tagAnchorFocus(); 
+            // 狀態返回到 "category" 層級 (即主分類標籤層)
+            backStageRef.current = "category";
+            return true;
+          } 
+          
+          // 如果沒有 tags，則行為等同於 "category" 層級，繼續執行退出邏輯。
+        }
+        
+        // 判斷 2: 處於內容層 ("tag") 但列表未在頂部
+        // 這種情況下，CustomScrollView 應處理滾動，BackHandler 不攔截
+        if (backStageRef.current === "tag" && !isListAtTop) {
+            return false;
         }
 
-        if (backStageRef.current === "category" || backStageRef.current === "root") {
-          // 在分類層或首頁才啟用「兩次返回退出」邏輯
+        // 判斷 3: 處於 "category" (主分類標籤層), "root", 或已回退到列表頂部 (無 Tag 分類)
+        if (backStageRef.current === "category" || backStageRef.current === "root" || (backStageRef.current === "tag" && !currentCategory?.tags && isListAtTop)) {
+          
+          // 啟用「兩次返回退出」邏輯
           if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
             backPressTimeRef.current = now;
             ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
             return true; // 攔截，不退出
           }
-          // 两次返回键间隔小于2秒，退出应用
+          // 两次返回键间隔小于2秒，退出應用
           BackHandler.exitApp();
           return true;
         }
@@ -120,7 +140,7 @@ export default function HomeScreen() {
           backPressTimeRef.current = null;
         };
       }
-    }, [tagAnchorFocus])
+    }, [tagAnchorFocus, selectedCategory, isListAtTop]) // 整合 isListAtTop
   );
 
   // 資料抓取
@@ -136,11 +156,9 @@ export default function HomeScreen() {
 
     // 只有在API配置完成且分類有效時才獲取數據
     if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
-      // 對於有標籤的分類，需要確保有標籤才獲取數據
       if (selectedCategory.tags && selectedCategory.tag) {
         fetchInitialData();
       }
-      // 對於無標籤的分類，直接獲取數據
       else if (!selectedCategory.tags) {
         fetchInitialData();
       }
@@ -174,20 +192,31 @@ export default function HomeScreen() {
     }
   }, [loading, contentData.length, fadeAnim]);
 
+  // ✅ 修正點：在 Category 選擇時更新 backStageRef
   const handleCategorySelect = (category: Category) => {
     setSelectedTag(null);
     selectCategory(category);
     // 進到新分類時重置焦點偏好
     setPreferCategory(false);
     setPreferParent(false);
+    setIsListAtTop(true); // 切換分類時，假設列表在頂部
+
+    // 設置回退狀態: 進入主分類層
+    // 如果 category 有 tags，狀態設為 "category"
+    // 如果 category 沒有 tags，狀態設為 "root" (直接等待退出)
+    backStageRef.current = (category.tags || category.type === "record") ? "category" : "root"; 
   };
 
+  // ✅ 修正點：在 Tag 選擇時更新 backStageRef
   const handleTagSelect = (tag: string) => {
     setSelectedTag(tag);
     if (selectedCategory) {
       const categoryWithTag = { ...selectedCategory, tag: tag };
       selectCategory(categoryWithTag);
     }
+    // 設置回退狀態: 進入內容層
+    backStageRef.current = "tag"; 
+    setIsListAtTop(true); // 選擇新 tag 時，列表從頂部開始
   };
 
   const renderCategory = ({ item }: { item: Category }) => {
@@ -316,7 +345,7 @@ export default function HomeScreen() {
       paddingHorizontal: deviceType === "tv" ? spacing / 4 : spacing / 2,
       paddingVertical: spacing / 2,
       borderRadius: deviceType === "mobile" ? 6 : 8,
-      marginHorizontal: deviceType === "tv" ? spacing / 4 : spacing / 2, // TV端使用更小的间距
+      marginHorizontal: deviceType === "tv" ? spacing / 4 : spacing / 2, // TV端使用更小的間距
     },
     categoryText: {
       fontSize: deviceType === "mobile" ? 14 : 16,
@@ -356,7 +385,7 @@ export default function HomeScreen() {
               const isSelected = selectedTag === item;
               return (
                 <StyledButton
-                  // ✅ 修正點 2/2: 條件式綁定 ref
+                  // ✅ 修正點 E: 綁定 ref
                   ref={index === 0 && deviceType === "tv" ? tagButtonRef : undefined}
                   hasTVPreferredFocus={index === 0}
                   text={item}
@@ -389,7 +418,7 @@ export default function HomeScreen() {
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
             正在验证服务器配置...
           </ThemedText>
-          </View>
+        </View>
       ) : apiConfigStatus.error && !apiConfigStatus.isValid ? (
         <View style={commonStyles.center}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
@@ -416,17 +445,11 @@ export default function HomeScreen() {
             error={error}
             onEndReached={loadMoreData}
             loadMoreThreshold={LOAD_MORE_THRESHOLD}
-            emptyMessage={selectedCategory?.tags ? "请选择一个子分类" : "该分类下暂无内容"}
+            emptyMessage={selectedCategory?.tags ? "请选择一个子分类" : "該分類下暫無內容"}
             ListFooterComponent={renderFooter}
-            // 返回鍵焦點回復
-            categoryAnchorFocus={() => {
-              setPreferParent(false);
-              setPreferCategory(true); // 第一次返回 → 本頁入口
-            }}
-            parentAnchorFocus={() => {
-              setPreferCategory(false);
-              setPreferParent(true); // 第二次返回 → 上一層入口
-            }}
+            
+            // ✅ 修正點：傳遞滾動狀態回調，取代舊的焦點回溯 Props
+            onScrollToTop={setIsListAtTop} 
           />
         </Animated.View>
       )}

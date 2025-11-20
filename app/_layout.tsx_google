@@ -1,0 +1,192 @@
+import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import { useFonts } from "expo-font";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect, useRef } from "react";
+import { Platform, View, StyleSheet } from "react-native";
+import Toast from "react-native-toast-message";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+// 引入 shallow 進行性能優化
+import { shallow } from "zustand/shallow";
+
+import { useSettingsStore } from "@/stores/settingsStore";
+import { useRemoteControlStore } from "@/stores/remoteControlStore";
+import LoginModal from "@/components/LoginModal";
+import useAuthStore from "@/stores/authStore";
+import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
+import { UpdateModal } from "@/components/UpdateModal";
+import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import useHomeStore from "@/stores/homeStore"; // 確保是預設導入
+import { useApiConfig } from "@/hooks/useApiConfig";
+import Logger from "@/utils/Logger";
+
+const logger = Logger.withTag("RootLayout");
+
+// 防止 SplashScreen 提前隱藏
+SplashScreen.preventAutoHideAsync();
+
+export default function RootLayout() {
+    const colorScheme = "dark";
+    const [loaded, error] = useFonts({
+        SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    });
+
+    // ✅ 修正 1: 使用 selector 僅訂閱所需的屬性和方法 (解決 TS2339, TS2554)
+    const { loadSettings, remoteInputEnabled, apiBaseUrl } = useSettingsStore(
+      (state) => ({ 
+        loadSettings: state.loadSettings,
+        remoteInputEnabled: state.remoteInputEnabled,
+        apiBaseUrl: state.apiBaseUrl,
+      }),
+      shallow
+    );
+    const { startServer, stopServer } = useRemoteControlStore(
+        (state) => ({
+            startServer: state.startServer,
+            stopServer: state.stopServer,
+        }),
+        shallow
+    );
+    const { checkLoginStatus } = useAuthStore(
+        (state) => ({ checkLoginStatus: state.checkLoginStatus }),
+        shallow
+    );
+    const { checkForUpdate, lastCheckTime } = useUpdateStore(
+        (state) => ({
+            checkForUpdate: state.checkForUpdate,
+            lastCheckTime: state.lastCheckTime,
+        }),
+        shallow
+    );
+
+    // ✅ 修正 2: 僅選取 HomeStore 的方法，不訂閱 Home Store 的狀態，並移除 (as any)
+    const { refreshPlayRecords, initEpisodeSelection } = useHomeStore(
+        (state) => ({
+            refreshPlayRecords: state.refreshPlayRecords,
+            initEpisodeSelection: state.initEpisodeSelection,
+        }),
+        shallow
+    );
+
+    const responsiveConfig = useResponsiveLayout();
+    const apiStatus = useApiConfig();
+    const hasInitialized = useRef(false);
+
+    // 初始化設置 & 更新存儲
+    useEffect(() => {
+        const initializeApp = async () => {
+            await loadSettings();
+        };
+        initializeApp();
+        initUpdateStore();
+    }, [loadSettings]);
+
+    // 檢查登入狀態
+    useEffect(() => {
+        if (apiBaseUrl) {
+            checkLoginStatus(apiBaseUrl);
+        }
+    }, [apiBaseUrl, checkLoginStatus]);
+
+    // 字體加載完成後隱藏 Splash
+    useEffect(() => {
+        if (loaded || error) {
+            SplashScreen.hideAsync();
+            if (error) {
+                logger.warn(`Error in loading fonts: ${error}`);
+            }
+        }
+    }, [loaded, error]);
+
+    // API 驗證成功後刷新播放記錄 & 初始化選集 & 檢查更新
+    useEffect(() => {
+        // 確保 API 有效且字體已加載，且只執行一次
+        if (!apiStatus.isValid || (!loaded && !error) || hasInitialized.current) return;
+        hasInitialized.current = true;
+
+        // 啟動時立即檢查一次更新
+        if (UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
+            const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
+            if (shouldCheck) {
+                // 由於 checkForUpdate 不在依賴項中，使用 getState() 避免警告
+                useUpdateStore.getState().checkForUpdate(true);
+            }
+        }
+
+        // 定時檢查更新
+        let updateInterval: NodeJS.Timeout | null = null;
+        if (UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
+            updateInterval = setInterval(() => {
+                // 由於 checkForUpdate 不在依賴項中，使用 getState() 避免警告
+                useUpdateStore.getState().checkForUpdate(true);
+            }, UPDATE_CONFIG.CHECK_INTERVAL);
+        }
+
+        // 刷新播放記錄（延遲 2 秒，避免和初始化衝突）
+        const playbackTimer = setTimeout(async () => {
+            try {
+                // 使用解構獲得的穩定方法
+                await refreshPlayRecords();
+            } catch (err) {
+                logger.warn("播放記錄刷新失敗", err);
+                // ✅ 修正 3: 確保 setPlayRecords 被正確調用
+                useHomeStore.getState().setPlayRecords?.([]);
+            } finally {
+                // ✅ 修正 4: 確保 initEpisodeSelection 被正確調用
+                useHomeStore.getState().initEpisodeSelection?.();
+            }
+        }, 2000);
+
+        return () => {
+            clearTimeout(playbackTimer);
+            if (updateInterval) clearInterval(updateInterval);
+        };
+    // 移除 Store 中的方法作為依賴項
+    }, [
+        apiStatus.isValid,
+        loaded,
+        error,
+        lastCheckTime,
+    ]);
+
+    // 遠程控制服務器啟停
+    useEffect(() => {
+        if (remoteInputEnabled && responsiveConfig.deviceType !== "mobile") {
+            // 使用解構獲得的穩定方法
+            startServer();
+        } else {
+            // 使用解構獲得的穩定方法
+            stopServer();
+        }
+    // 移除 startServer 和 stopServer 依賴項
+    }, [remoteInputEnabled, responsiveConfig.deviceType]);
+
+    return (
+        <SafeAreaProvider>
+            <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+                <View style={styles.container}>
+                    <Stack>
+                        <Stack.Screen name="index" options={{ headerShown: false }} />
+                        <Stack.Screen name="detail" options={{ headerShown: false }} />
+                        {Platform.OS !== "web" && <Stack.Screen name="play" options={{ headerShown: false }} />}
+                        <Stack.Screen name="search" options={{ headerShown: false }} />
+                        <Stack.Screen name="live" options={{ headerShown: false }} />
+                        <Stack.Screen name="settings" options={{ headerShown: false }} />
+                        <Stack.Screen name="favorites" options={{ headerShown: false }} />
+                        <Stack.Screen name="+not-found" />
+                    </Stack>
+                </View>
+                <Toast />
+                <LoginModal />
+                <UpdateModal />
+            </ThemeProvider>
+        </SafeAreaProvider>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+});
