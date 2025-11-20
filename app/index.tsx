@@ -102,12 +102,28 @@ export default function HomeScreen() {
       selectCategory({ ...selectedCategory, tag: defaultTag });
       return;
     }
-    if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
-      fetchInitialData();
-    }
-  }, [selectedCategory, apiConfigStatus, fetchInitialData, selectCategory]);
 
-  // 清錯
+    // 只有在API配置完成且分类有效时才获取数据
+    if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
+      // 对于有标签的分类，需要确保有标签才获取数据
+      if (selectedCategory.tags && selectedCategory.tag) {
+        fetchInitialData();
+      }
+      // 对于无标签的分类，直接获取数据
+      else if (!selectedCategory.tags) {
+        fetchInitialData();
+      }
+    }
+  }, [
+    selectedCategory,
+    selectedCategory?.tag,
+    apiConfigStatus.isConfigured,
+    apiConfigStatus.needsConfiguration,
+    fetchInitialData,
+    selectCategory,
+  ]);
+
+  // 清除错误状态的逻辑
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) {
       clearError();
@@ -138,7 +154,8 @@ export default function HomeScreen() {
   const handleTagSelect = (tag: string) => {
     setSelectedTag(tag);
     if (selectedCategory) {
-      selectCategory({ ...selectedCategory, tag });
+      const categoryWithTag = { ...selectedCategory, tag: tag };
+      selectCategory(categoryWithTag);
     }
   };
 
@@ -156,8 +173,22 @@ export default function HomeScreen() {
     );
   };
 
-  const renderContentItem = ({ item }: { item: RowItem }) => (
-    <VideoCard {...item} api={api} onRecordDeleted={fetchInitialData} />
+  const renderContentItem = ({ item }: { item: RowItem; index: number }) => (
+    <VideoCard
+      id={item.id}
+      source={item.source}
+      title={item.title}
+      poster={item.poster}
+      year={item.year}
+      rate={item.rate}
+      progress={item.progress}
+      playTime={item.play_time}
+      episodeIndex={item.episodeIndex}
+      sourceName={item.sourceName}
+      totalEpisodes={item.totalEpisodes}
+      api={api}
+      onRecordDeleted={fetchInitialData}
+    />
   );
 
   const renderFooter = () => {
