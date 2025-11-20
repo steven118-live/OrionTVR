@@ -15,6 +15,7 @@ interface VersionInfo {
   availableVersions: string[];
   downloadUrl: string;
   upstreamVersion?: string;
+  updatedAt?: string; // 新增：來源的時間戳（保留原始碼方式）
 }
 
 const ANDROID_MIME_TYPE = 'application/vnd.android.package-archive';
@@ -38,8 +39,8 @@ class UpdateService {
         fetch(UPDATE_CONFIG.CHECK_SOURCES.tag),
       ]);
 
-      const devPackage = responseDev.ok ? await responseDev.json() : { version: "" };
-      const tagPackage = responseTag.ok ? await responseTag.json() : { version: "" };
+      const devPackage = responseDev.ok ? await responseDev.json() : { version: "", updated_at: "" };
+      const tagPackage = responseTag.ok ? await responseTag.json() : { version: "", updated_at: "" };
 
       const latestDev = devPackage.version ?? "";
       const latestTag = tagPackage.version ?? "";
@@ -52,6 +53,7 @@ class UpdateService {
         baselineVersion: updateInfo.baselineVersion,
         availableVersions: updateInfo.availableVersions,
         downloadUrl: UPDATE_CONFIG.getDownloadUrl(updateInfo.latestVersion, updateInfo.currentTarget),
+        updatedAt: updateInfo.currentTarget === "dev" ? devPackage.updated_at : tagPackage.updated_at,
       };
     } catch (e) {
       Toast.show({
@@ -72,7 +74,7 @@ class UpdateService {
       if (!dirUri) throw new Error('Document directory is not available');
 
       const listing = await FileSystem.readDirectoryAsync(dirUri);
-      const apkFiles = listing.filter(name => name.startsWith('OrionTV_v') && name.endsWith('.apk'));
+      const apkFiles = listing.filter(name => name.endsWith('.apk'));
 
       if (apkFiles.length <= 2) return;
 
@@ -112,8 +114,8 @@ class UpdateService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const timestamp = Date.now();
-        const fileName = `OrionTV_v${timestamp}.apk`;
+        // 本地檔名和 Tag 一致
+        const fileName = `${version}.apk`;
         const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
         const downloadResumable = FileSystem.createDownloadResumable(

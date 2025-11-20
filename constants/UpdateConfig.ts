@@ -11,9 +11,9 @@ export const UPDATE_CONFIG = {
     tag: `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
   },
 
-  // 下载 URL：符合 workflow 的文件命名规则
+  // 下载 URL：符合 workflow 的文件命名规则（和 tag 對齊）
   getDownloadUrl(version: string, buildTarget: string): string {
-    return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${buildTarget}-${version}.apk`;
+    return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/${version}.apk`;
   },
 
   // 是否显示更新日志
@@ -34,7 +34,7 @@ export const UPDATE_CONFIG = {
   // 允许更新规则：必须经过 baseline
   ALLOW_UPDATE_RULES(buildTarget: string, newVersion: string): boolean {
     if (buildTarget === "dev") {
-      return newVersion.startsWith("dev") || newVersion === UPDATE_CONFIG.BASELINE_VERSIONS.dev;
+      return newVersion.endsWith("-dev") || newVersion === UPDATE_CONFIG.BASELINE_VERSIONS.dev;
     }
     if (buildTarget === "tag") {
       return /^\d+\.\d+\.\d+\.\d+$/.test(newVersion) || newVersion === UPDATE_CONFIG.BASELINE_VERSIONS.tag;
