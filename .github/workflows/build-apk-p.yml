@@ -108,38 +108,47 @@ jobs:
             yarn build
           fi
 
-      - name: Rename APK file with version (tag aligned)
+      - name: Rename APK file with version (branch/tag aligned)
+        id: rename-apk
         run: |
           mkdir -p artifacts
           VERSION="${{ steps.package-version.outputs.version }}"
-          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/${VERSION}.apk"
-          echo "APK prepared: artifacts/${VERSION}.apk"
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            FINAL_VERSION="${VERSION}-dev"
+          elif [ "${{ github.event.inputs.buildTarget }}" = "dev" ]; then
+            FINAL_VERSION="${VERSION}-dev"
+          else
+            FINAL_VERSION="${VERSION}"
+          fi
+          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/${FINAL_VERSION}.apk"
+          echo "apk_version=${FINAL_VERSION}" >> $GITHUB_OUTPUT
+          echo "APK prepared: artifacts/${FINAL_VERSION}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package-version.outputs.version }}
-          path: artifacts/${{ steps.package-version.outputs.version }}.apk
+          name: ${{ steps.rename-apk.outputs.apk_version }}
+          path: artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk
           retention-days: 7
 
       - name: Check APK version info
         run: |
           sudo apt-get update && sudo apt-get install -y aapt
-          aapt dump badging "artifacts/${{ steps.package-version.outputs.version }}.apk" | grep version
+          aapt dump badging "artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk" | grep version
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.package-version.outputs.version }}
-          name: Release v${{ steps.package-version.outputs.version }}
+          tag_name: v${{ steps.rename-apk.outputs.apk_version }}
+          name: Release v${{ steps.rename-apk.outputs.apk_version }}
           body: |
-            Automated release for version v${{ steps.package-version.outputs.version }}.
+            Automated release for version v${{ steps.rename-apk.outputs.apk_version }}.
             Build target: ${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}
             Build mode: ${{ github.event.inputs.buildMode }}
             Commit: ${{ github.sha }}
             This build includes the small version .xxx(001-999) suffix for personal/internal use.
           draft: false
           prerelease: false
-          files: artifacts/${{ steps.package-version.outputs.version }}.apk
+          files: artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
