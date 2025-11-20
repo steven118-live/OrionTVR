@@ -30,12 +30,20 @@ import { Colors } from "@/constants/Colors";
 
 const LOAD_MORE_THRESHOLD = 200;
 
+// 為了型別安全，這裡我們為 StyledButton 的 ref 定義一個通用型別。
+// 由於它用於 focus()，通常指向一個 Pressable 或 View，故暫時使用 any。
+// 如果 StyledButton 導出了自己的 Ref 型別，請替換此處的 any。
+type FocusableRef = any; 
+
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = "dark";
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
+
+  // ✅ 修正點 1/2: 宣告 tagButtonRef
+  const tagButtonRef = useRef<FocusableRef>(null);
 
   // 焦點狀態：控制返回鍵焦點回復
   const [preferCategory, setPreferCategory] = useState(false);
@@ -67,21 +75,44 @@ export default function HomeScreen() {
       refreshPlayRecords();
     }, [refreshPlayRecords])
   );
-
   // 雙擊返回退出（僅 Android）
+  type BackStage = "root" | "category" | "tag";
+  const backStageRef = useRef<BackStage>("root");
   const backPressTimeRef = useRef<number | null>(null);
+
+  // 定義一個函數，讓返回鍵時能回到 tag 按鍵
+  const tagAnchorFocus = useCallback(() => {
+    tagButtonRef.current?.focus();
+  }, []);
+  
+  // 這裡要綁定到你 UI 裡的 tag 按鍵 ref
   useFocusEffect(
     useCallback(() => {
       const handleBackPress = () => {
         const now = Date.now();
-        if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
-          backPressTimeRef.current = now;
-          ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
+
+        if (backStageRef.current === "tag") {
+          // 從子分類返回到子分類按鍵 (例如「國產劇」)
+          tagAnchorFocus?.(); // 這裡要綁定到對應的 tag anchor
+          backStageRef.current = "category";
           return true;
         }
-        BackHandler.exitApp();
-        return true;
+
+        if (backStageRef.current === "category" || backStageRef.current === "root") {
+          // 在分類層或首頁才啟用「兩次返回退出」邏輯
+          if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
+            backPressTimeRef.current = now;
+            ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
+            return true; // 攔截，不退出
+          }
+          // 两次返回键间隔小于2秒，退出应用
+          BackHandler.exitApp();
+          return true;
+        }
+
+        return false;
       };
+
       if (Platform.OS === "android") {
         const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
         return () => {
@@ -89,7 +120,7 @@ export default function HomeScreen() {
           backPressTimeRef.current = null;
         };
       }
-    }, [])
+    }, [tagAnchorFocus])
   );
 
   // 資料抓取
@@ -103,13 +134,13 @@ export default function HomeScreen() {
       return;
     }
 
-    // 只有在API配置完成且分类有效时才获取数据
+    // 只有在API配置完成且分類有效時才獲取數據
     if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
-      // 对于有标签的分类，需要确保有标签才获取数据
+      // 對於有標籤的分類，需要確保有標籤才獲取數據
       if (selectedCategory.tags && selectedCategory.tag) {
         fetchInitialData();
       }
-      // 对于无标签的分类，直接获取数据
+      // 對於無標籤的分類，直接獲取數據
       else if (!selectedCategory.tags) {
         fetchInitialData();
       }
@@ -123,7 +154,7 @@ export default function HomeScreen() {
     selectCategory,
   ]);
 
-  // 清除错误状态的逻辑
+  // 清除錯誤狀態的邏輯
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) {
       clearError();
@@ -325,6 +356,8 @@ export default function HomeScreen() {
               const isSelected = selectedTag === item;
               return (
                 <StyledButton
+                  // ✅ 修正點 2/2: 條件式綁定 ref
+                  ref={index === 0 && deviceType === "tv" ? tagButtonRef : undefined}
                   hasTVPreferredFocus={index === 0}
                   text={item}
                   onPress={() => handleTagSelect(item)}
@@ -356,7 +389,7 @@ export default function HomeScreen() {
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
             正在验证服务器配置...
           </ThemedText>
-        </View>
+          </View>
       ) : apiConfigStatus.error && !apiConfigStatus.isValid ? (
         <View style={commonStyles.center}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
@@ -388,11 +421,11 @@ export default function HomeScreen() {
             // 返回鍵焦點回復
             categoryAnchorFocus={() => {
               setPreferParent(false);
-              setPreferCategory(true);   // 第一次返回 → 本頁入口
+              setPreferCategory(true); // 第一次返回 → 本頁入口
             }}
             parentAnchorFocus={() => {
               setPreferCategory(false);
-              setPreferParent(true);     // 第二次返回 → 上一層入口
+              setPreferParent(true); // 第二次返回 → 上一層入口
             }}
           />
         </Animated.View>

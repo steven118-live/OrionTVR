@@ -105,10 +105,19 @@ export const UPDATE_CONFIG: UpdateConfigType = {
   // 返回可选版本清单：最新版 + baseline
   getAvailableVersions(latestDev: string, latestTag: string): string[] {
     const versions: string[] = [];
-    versions.push(`dev ${latestDev}`);
-    versions.push(`tag ${latestTag}`);
-    versions.push(`dev ${this.BASELINE_VERSIONS.dev}`);
-    versions.push(`tag ${this.BASELINE_VERSIONS.tag}`);
+
+    const addUnique = (label: string, version: string) => {
+      const entry = `${label} ${version}`;
+      if (!versions.includes(entry)) {
+        versions.push(entry);
+      }
+    };
+
+    addUnique("dev", latestDev);
+    addUnique("tag", latestTag);
+    addUnique("dev", this.BASELINE_VERSIONS.dev);
+    addUnique("tag", this.BASELINE_VERSIONS.tag);
+
     return versions;
   },
 
