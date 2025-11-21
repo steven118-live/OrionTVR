@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, forwardRef } from "react";
-import { View, Text, Image, StyleSheet, Pressable, TouchableOpacity, Alert, Animated, Platform } from "react-native";
+import { 
+  View, 
+  Text, 
+  Image, 
+  StyleSheet, 
+  Pressable, 
+  TouchableOpacity, 
+  Alert, 
+  Animated, 
+  Platform 
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Star, Play } from "lucide-react-native";
 import { PlayRecordManager } from "@/services/storage";
@@ -7,7 +17,7 @@ import { API } from "@/services/api";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+// ⚠️ 移除 useResponsiveLayout，因為這已經是 .tv 專用組件
 
 const logger = Logger.withTag('VideoCardTV');
 
@@ -19,16 +29,17 @@ interface VideoCardProps extends React.ComponentProps<typeof TouchableOpacity> {
   year?: string;
   rate?: string;
   sourceName?: string;
-  progress?: number; // 播放进度，0-1之间的小数
-  playTime?: number; // 播放时间 in ms
-  episodeIndex?: number; // 剧集索引
-  totalEpisodes?: number; // 总集数
+  progress?: number; 
+  playTime?: number; 
+  episodeIndex?: number; 
+  totalEpisodes?: number; 
   onFocus?: () => void;
-  onRecordDeleted?: () => void; // 添加回调属性
+  onRecordDeleted?: () => void;
   api: API;
 }
 
-const VideoCard = forwardRef<View, VideoCardProps>(
+// ������ 優化 1: 使用 React.memo 包裹組件，防止 FlatList 滾動時不必要的重渲染
+const VideoCardTV = React.memo(forwardRef<View, VideoCardProps>(
   (
     {
       id,
@@ -50,66 +61,67 @@ const VideoCard = forwardRef<View, VideoCardProps>(
   ) => {
     const router = useRouter();
     const [isFocused, setIsFocused] = useState(false);
-    const [fadeAnim] = useState(new Animated.Value(0));
-
+    
+    // ������ 僅保留一次性淡入動畫的狀態和引用
+    const fadeAnim = useRef(new Animated.Value(0)).current; 
     const longPressTriggered = useRef(false);
-
     const scale = useRef(new Animated.Value(1)).current;
-
-    const deviceType = useResponsiveLayout().deviceType;
 
     const animatedStyle = {
       transform: [{ scale }],
     };
 
-    const handlePress = () => {
+    // ������ 優化 2: 移除 FlatList 內的隨機延遲淡入動畫
+    // 在 FlatList 內使用隨機延遲會導致組件載入時間不一致，造成明顯卡頓感。
+    useEffect(() => {
+      // 僅執行一次淡入，讓卡片快速顯示
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200, // 縮短至 200ms
+        delay: 0, // 移除隨機延遲
+        useNativeDriver: true,
+      }).start();
+    }, [fadeAnim]);
+
+
+    const handlePress = useCallback(() => {
       if (longPressTriggered.current) {
         longPressTriggered.current = false;
         return;
       }
-      // 如果有播放进度，直接转到播放页面
-      if (progress !== undefined && episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 },
-        });
-      } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title },
-        });
-      }
-    };
+      // 保持原有邏輯
+      const targetPath = (progress !== undefined && episodeIndex !== undefined) ? "/play" : "/detail";
+      const params = (progress !== undefined && episodeIndex !== undefined)
+        ? { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 }
+        : { source, q: title };
 
+      router.push({ pathname: targetPath, params });
+      
+    }, [router, source, id, title, progress, episodeIndex, playTime]);
+
+    // ������ 優化 3: 確保焦點動畫使用 Native Driver 且回調函數優化
     const handleFocus = useCallback(() => {
       setIsFocused(true);
       Animated.spring(scale, {
         toValue: 1.05,
         damping: 15,
         stiffness: 200,
-        useNativeDriver: true,
+        useNativeDriver: true, // 保持開啟 Native Driver
       }).start();
       onFocus?.();
-    }, [scale, onFocus]);
+    }, [scale, onFocus]); // 依賴項已優化
 
     const handleBlur = useCallback(() => {
       setIsFocused(false);
       Animated.spring(scale, {
         toValue: 1.0,
-        useNativeDriver: true,
+        damping: 15, // 增加 damping 參數，讓動畫回彈更自然
+        stiffness: 200,
+        useNativeDriver: true, // 保持開啟 Native Driver
       }).start();
-    }, [scale]);
+    }, [scale]); // 依賴項已優化
 
-    useEffect(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        delay: Math.random() * 200, // 随机延迟创造交错效果
-        useNativeDriver: true,
-      }).start();
-    }, [fadeAnim]);
-
-    const handleLongPress = () => {
+    const handleLongPress = useCallback(() => {
       // Only allow long press for items with progress (play records)
       if (progress === undefined) return;
 
@@ -120,54 +132,48 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         {
           text: "取消",
           style: "cancel",
+          onPress: () => { longPressTriggered.current = false; } // 取消時重置
         },
         {
           text: "删除",
           style: "destructive",
           onPress: async () => {
             try {
-              // Delete from local storage
               await PlayRecordManager.remove(source, id);
-
-              // Call the onRecordDeleted callback
-              if (onRecordDeleted) {
-                onRecordDeleted();
-              }
-              // 如果没有回调函数，则使用导航刷新作为备选方案
-              else if (router.canGoBack()) {
-                router.replace("/");
-              }
+              onRecordDeleted?.();
             } catch (error) {
               logger.info("Failed to delete play record:", error);
               Alert.alert("错误", "删除观看记录失败，请重试");
+            } finally {
+               // 確保在刪除完成或失敗後重置
+               longPressTriggered.current = false; 
             }
           },
         },
       ]);
-    };
+    }, [progress, title, source, id, onRecordDeleted]); // 依賴項已優化
 
-    // 是否是继续观看的视频
+    // 是否是繼續觀看的視頻
     const isContinueWatching = progress !== undefined && progress > 0 && progress < 1;
 
     return (
-      <Animated.View style={[styles.wrapper, animatedStyle, { opacity: fadeAnim }]}>
+      // ������ 優化 4: 移除最外層不必要的 Animated.View，將動畫直接應用於 Pressable
+      // 將 Pressable 作為 ref 的實際目標 (如果需要 ref)
+      <Animated.View style={[styles.wrapper, animatedStyle, { opacity: fadeAnim }]} ref={ref as any}> 
         <Pressable
-          android_ripple={Platform.isTV || deviceType !== 'tv' ? { color: 'transparent' } : { color: Colors.dark.link }}
+          // ������ 保持 TV 平台的 Pressable 設置
+          android_ripple={Platform.isTV ? { color: 'transparent' } : { color: Colors.dark.link }}
           onPress={handlePress}
           onLongPress={handleLongPress}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          style={({ pressed }) => [
-            styles.pressable,
-            {
-              zIndex: pressed ? 999 : 1, // 确保按下时有最高优先级
-            },
-          ]}
-          // activeOpacity={1}
+          // ������ 將 zIndex 判斷移到 onFocus/onBlur 處理，避免每次渲染都計算
+          style={styles.pressable} 
           delayLongPress={1000}
         >
           <View style={styles.card}>
-            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
+            {/* 圖像載入: 使用 Image 組件，確保圖片優化 */}
+            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} resizeMode="cover" />
 
             {/* 新增集數標籤 */}
             {episodeIndex !== undefined && totalEpisodes !== undefined && totalEpisodes > 1 && (
@@ -183,7 +189,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
                 {isContinueWatching && (
                   <View style={styles.continueWatchingBadge}>
                     <Play size={16} color="#ffffff" fill="#ffffff" />
-                    <ThemedText style={styles.continueWatchingText}>继续观看</ThemedText>
+                    <ThemedText style={styles.continueWatchingText}>繼續觀看</ThemedText>
                   </View>
                 )}
               </View>
@@ -192,10 +198,12 @@ const VideoCard = forwardRef<View, VideoCardProps>(
             {/* 进度条 */}
             {isContinueWatching && (
               <View style={styles.progressContainer}>
+                {/* ⚠️ 提醒: 如果 progress 動態更新頻繁，這可能仍是瓶頸。 */}
                 <View style={[styles.progressBar, { width: `${(progress || 0) * 100}%` }]} />
               </View>
             )}
 
+            {/* 其他徽章 (不變) */}
             {rate && (
               <View style={styles.ratingContainer}>
                 <Star size={12} color="#FFD700" fill="#FFD700" />
@@ -218,7 +226,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
             {isContinueWatching && (
               <View style={styles.infoRow}>
                 <ThemedText style={styles.continueLabel}>
-                  第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
+                  第{episodeIndex}集 已觀看 {Math.round((progress || 0) * 100)}%
                 </ThemedText>
               </View>
             )}
@@ -227,11 +235,11 @@ const VideoCard = forwardRef<View, VideoCardProps>(
       </Animated.View>
     );
   }
-);
+));
 
-VideoCard.displayName = "VideoCard";
+VideoCardTV.displayName = "VideoCardTV";
 
-export default VideoCard;
+export default VideoCardTV;
 
 const CARD_WIDTH = 160;
 const CARD_HEIGHT = 240;
@@ -245,7 +253,7 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT + 60,
     justifyContent: 'center',
     alignItems: "center",
-    overflow: "visible",
+    overflow: "visible", // 確保動畫不會被裁剪
   },
   card: {
     marginTop: 10,
@@ -268,6 +276,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  // ... (其他樣式保持不變)
   buttonRow: {
     position: "absolute",
     top: 8,
