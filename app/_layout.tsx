@@ -6,6 +6,8 @@ import { useEffect, useRef } from "react";
 import { Platform, View, StyleSheet } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+// 引入 shallow 進行性能優化
+import { shallow } from "zustand/shallow";
 
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useRemoteControlStore } from "@/stores/remoteControlStore";
