@@ -1,5 +1,3 @@
-// app/_layout.tsx
-
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -13,8 +11,8 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import LoginModal from "@/components/LoginModal";
 import useAuthStore from "@/stores/authStore";
-import { useUpdateStore } from "@/stores/updateStore"; // <-- 修复 1: 移除 initUpdateStore 导入
-import { UpdateModal } from "@/components/UpdateModal";
+import { useUpdateStore } from "@/stores/updateStore";
+import UpdateModal from "@/components/UpdateModal";
 import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import useHomeStore from "@/stores/homeStore";
@@ -35,7 +33,7 @@ export default function RootLayout() {
   const { loadSettings, remoteInputEnabled, apiBaseUrl } = useSettingsStore();
   const { startServer, stopServer } = useRemoteControlStore();
   const { checkLoginStatus } = useAuthStore();
-  const { checkForUpdate, lastCheckTime } = useUpdateStore();
+  const { checkForUpdate, lastCheckTime, initialize } = useUpdateStore(); // 确保引入 initialize
   const responsiveConfig = useResponsiveLayout();
   
   // 保持 useHomeStore 的类型转换不变
@@ -47,14 +45,15 @@ export default function RootLayout() {
 
   const hasInitialized = useRef(false); // 初始化鎖
 
-  // 初始化設定
+  // 初始化設定 and UpdateStore
   useEffect(() => {
     const initializeApp = async () => {
       await loadSettings();
+      // 在此调用 initialize，确保 UpdateStore 的初始版本信息被设置
+      initialize(); 
     };
     initializeApp();
-    // initUpdateStore(); // <-- 修复 2: 移除对 initUpdateStore() 的调用
-  }, [loadSettings]);
+  }, [loadSettings, initialize]); // 添加 initialize 依赖项
 
   // 檢查登入狀態
   useEffect(() => {
@@ -84,7 +83,8 @@ export default function RootLayout() {
       if (loaded && UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
         const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
         if (shouldCheck) {
-          checkForUpdate(true);
+          // 修正点: 移除参数 (true)
+          checkForUpdate(); 
         }
       }
 

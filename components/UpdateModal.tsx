@@ -1,261 +1,159 @@
-// components/UpdateModal.tsx
+// components/UpdateModal.tsx (完整覆盖版)
 
-import React from "react";
-import { Modal, View, StyleSheet, ActivityIndicator, Platform } from "react-native";
-import { useUpdateStore } from "../stores/updateStore";
-import { Colors } from "../constants/Colors";
-import { StyledButton } from "./StyledButton";
-import { ThemedText } from "./ThemedText";
+import React from 'react';
+import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useUpdateStore } from '../stores/updateStore'; 
 
-export function UpdateModal() {
-  const {
-    showUpdateModal,
-    currentVersion,
-    availableVersions, // <-- 引入: 可选版本清单
-    baselineVersion,   // <-- 引入: 基线版本
-    currentBuildTarget, // <-- 引入: 应用当前运行目标
-    targetChannel,      // <-- 引入: 当前弹窗展示的目标通道
-    downloading,
-    downloadProgress,
-    error,
-    setShowUpdateModal,
-    handleDownload,    // <-- 引入: 下载函数 (支持传入版本号)
-    installUpdate,
-    skipThisVersion,
-    downloadedPath,
-    switchBuildTarget, // <-- 引入: 切换目标通道的动作
-  } = useUpdateStore();
-
-  const updateButtonRef = React.useRef<View>(null);
-
-  // 决定另一个通道的名称
-  const otherTarget = currentBuildTarget === 'tag' ? 'dev' : 'tag';
-  // 决定当前显示的通道是否是用户正在运行的通道
-  const isViewingCurrentTarget = currentBuildTarget === targetChannel;
-
-  function handleLater() {
-    setShowUpdateModal(false);
-  }
-  
-  // 切换通道的处理函数
-  function handleSwitchTarget() {
-    // 切换到另一个通道，或如果当前不在运行通道则返回运行通道
-    const newTarget = isViewingCurrentTarget ? otherTarget : currentBuildTarget; 
-    switchBuildTarget(newTarget);
-  }
-
-  React.useEffect(() => {
-    if (showUpdateModal && Platform.isTV) {
-      setTimeout(() => {
-        // 自动聚焦到第一个可下载/安装的按钮
-        updateButtonRef.current?.focus(); 
-      }, 100);
-    }
-  }, [showUpdateModal]);
-
-  return (
-    <Modal visible={showUpdateModal} transparent animationType="fade" onRequestClose={handleLater}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <ThemedText style={styles.title}>发现新版本</ThemedText>
-
-          {/* 当前运行版本信息 (修正显示格式) */}
-          <View style={styles.versionInfo}>
-            <ThemedText style={styles.versionText}>当前运行: v{currentVersion} ({currentBuildTarget.toUpperCase()})</ThemedText>
-          </View>
-
-          {/* 目标通道信息 */}
-          {targetChannel && (
-            <View style={styles.targetInfo}>
-                <ThemedText style={styles.targetText}>
-                    当前查看通道: 
-                    <ThemedText style={[styles.targetText, { fontWeight: 'bold', color: targetChannel === 'dev' ? '#ffcc00' : Colors.dark.primary || '#00bb5e' }]}>
-                        {" "} {targetChannel.toUpperCase()}
-                    </ThemedText>
-                </ThemedText>
-            </View>
-          )}
-
-          {/* 渲染可选版本清单 */}
-          {availableVersions?.map((ver: string, idx: number) => { 
-            const isBaseline = ver === baselineVersion; 
-            return (
-              <View key={idx} style={styles.versionRow}>
-                <ThemedText style={styles.versionText}>
-                  {ver} {isBaseline ? "（切换基线版）" : ""}
-                </ThemedText>
-                
-                {/* 针对每个版本提供下载按钮 */}
-                <StyledButton
-                  ref={idx === 0 ? updateButtonRef : undefined}
-                  onPress={() => handleDownload(ver)} 
-                  disabled={downloading}
-                  variant="primary"
-                  style={styles.smallButton}
-                >
-                  {downloading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <ThemedText style={styles.buttonText}>下载</ThemedText>
-                  )}
-                </StyledButton>
-              </View>
-            );
-          })}
-
-          {/* 进度条 */}
-          {downloading && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${downloadProgress}%` }]} />
-              </View>
-              <ThemedText style={styles.progressText}>{downloadProgress}%</ThemedText>
-            </View>
-          )}
-
-          {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
-
-          <View style={styles.buttonContainer}>
-            {!downloading && !downloadedPath && (
-              <>
-                {/* 频道切换按钮: 修复 TS 错误，使用 ghost 模拟 secondary */}
-                <StyledButton 
-                    onPress={handleSwitchTarget} 
-                    variant="ghost" 
-                    style={[styles.button, styles.secondaryButton]}
-                >
-                    <ThemedText style={styles.buttonText}>
-                        {isViewingCurrentTarget ? `切换到 ${otherTarget.toUpperCase()} 通道` : `返回 ${currentBuildTarget.toUpperCase()} 通道`}
-                    </ThemedText>
-                </StyledButton>
-                
-                <StyledButton onPress={handleLater} variant="primary" style={styles.button}>
-                  <ThemedText style={styles.buttonText}>稍后再说</ThemedText>
-                </StyledButton>
-
-                <StyledButton onPress={skipThisVersion} variant="primary" style={styles.button}>
-                  <ThemedText style={styles.buttonText}>跳过此版本</ThemedText>
-                </StyledButton>
-              </>
-            )}
-
-            {/* 立即安装按钮 */}
-            {downloadedPath && (
-              <StyledButton onPress={installUpdate} variant="primary" style={styles.button}>
-                <ThemedText style={styles.buttonText}>立即安装</ThemedText>
-              </StyledButton>
-            )}
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
+// 临时样式定义 (TS2339 修复)
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  container: {
-    backgroundColor: Colors.dark.background,
-    borderRadius: 12,
-    padding: 24,
-    width: Platform.isTV ? 500 : "90%",
-    maxWidth: 500,
-    alignItems: "center",
-  },
-  title: {
-    fontSize: Platform.isTV ? 28 : 24,
-    fontWeight: "bold",
-    color: Colors.dark.text,
-    marginBottom: 20,
-    paddingTop: 12,
-  },
-  versionInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  targetInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.dark.border,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  targetText: {
-    fontSize: Platform.isTV ? 18 : 16,
-    color: Colors.dark.text,
-  },
-  versionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-    marginBottom: 12,
-  },
-  versionText: {
-    fontSize: Platform.isTV ? 16 : 14,
-    color: Colors.dark.text,
-    flexShrink: 1, 
-  },
-  progressContainer: {
-    width: "100%",
-    marginBottom: 20,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: Colors.dark.border,
-    borderRadius: 3,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: Colors.dark.primary || "#00bb5e",
-  },
-  progressText: {
-    fontSize: Platform.isTV ? 16 : 14,
-    color: Colors.dark.text,
-    textAlign: "center",
-  },
-  errorText: {
-    fontSize: Platform.isTV ? 16 : 14,
-    color: "#ff4444",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  buttonContainer: {
-    width: "100%",
-    gap: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  button: {
-    width: "80%",
-  },
-  // <-- 新增样式以解决 TS 错误并模拟 secondary 按钮 -->
-  secondaryButton: {
-    borderWidth: 1.5,
-    borderColor: Colors.dark.text, 
-    backgroundColor: 'transparent',
-  },
-  // --------------------------------------------------
-  smallButton: {
-    width: 100,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonText: {
-    fontSize: Platform.isTV ? 18 : 16,
-    fontWeight: "600",
-    color: "#fff",
-  },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalView: {
+        margin: 20,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 35,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+        width: '80%',
+    },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
+    versionRow: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        width: '100%', 
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    buttonGroup: {
+        flexDirection: 'row',
+        marginTop: 20,
+        justifyContent: 'space-around',
+        width: '100%',
+    },
 });
+
+
+const UpdateModal = () => {
+    // 修正所有属性名和引入
+    const {
+        showUpdateModal,
+        availableVersions,
+        currentVersion,
+        latestVersion,
+        baselineVersion,
+        downloading,
+        downloadProgress,
+        errorReason: error, // 修正: error -> errorReason
+        closeModal: setShowUpdateModal, // 修正: setShowUpdateModal -> closeModal
+        handleDownload, 
+        installUpdate, // 修正: 无参数
+        skipThisVersion,
+        downloadedPath,
+        switchBuildTarget, 
+        currentBuildTarget,
+        targetChannel, // 引入 targetChannel
+        upstreamTagVersion,
+        isUpdateAvailable, 
+    } = useUpdateStore();
+
+    const isDownloaded = downloadedPath !== null;
+    const isError = error !== null;
+
+    if (!showUpdateModal) return null;
+
+    const renderContent = () => {
+        if (isError) {
+            return (
+                <View>
+                    <Text style={[styles.modalTitle, { color: 'red' }]}>更新检查失败</Text>
+                    <Text>原因: {error}</Text>
+                    <TouchableOpacity onPress={setShowUpdateModal}>
+                        <Text>关闭</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        if (!isUpdateAvailable) {
+            return (
+                <View style={{ alignItems: 'center' }}>
+                    <Text style={styles.modalTitle}>版本信息</Text>
+                    <Text>当前版本: {currentVersion}</Text>
+                    <Text>您已是最新版本。</Text>
+                    <Text>官方源最新版本: {upstreamTagVersion || 'N/A'}</Text>
+                    <TouchableOpacity onPress={setShowUpdateModal} style={{ marginTop: 15 }}>
+                        <Text>确定</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        return (
+            <View style={{ alignItems: 'center' }}>
+                <Text style={styles.modalTitle}>发现新版本!</Text>
+                <Text>当前版本: {currentVersion}</Text>
+                <Text>最新版本 ({targetChannel} 通道): {latestVersion}</Text>
+                <Text>官方源最新版本: {upstreamTagVersion || 'N/A'}</Text>
+
+                {availableVersions.map(ver => (
+                    <View key={ver} style={styles.versionRow}>
+                        <Text>版本 {ver}</Text>
+                        
+                        {!isDownloaded && downloading && (
+                            <Text>下载中: {downloadProgress.toFixed(0)}%</Text>
+                        )}
+                        {!isDownloaded && !downloading && (
+                            // 修正 handleDownload 参数
+                            <TouchableOpacity onPress={() => handleDownload(ver, targetChannel)}>
+                                <Text style={{ color: 'blue' }}>下载</Text>
+                            </TouchableOpacity>
+                        )}
+                        
+                        {isDownloaded && !downloading && (
+                            // 修正 installUpdate 调用
+                            <TouchableOpacity onPress={() => installUpdate()}>
+                                <Text style={{ color: 'green' }}>安装</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                ))}
+
+                <View style={styles.buttonGroup}>
+                    <TouchableOpacity onPress={skipThisVersion}>
+                        <Text>跳过</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => switchBuildTarget(targetChannel === 'dev' ? 'tag' : 'dev')}>
+                        <Text>切换到 {targetChannel === 'dev' ? 'Tag' : 'Dev'} 通道</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    };
+
+    return (
+        <Modal
+            animationType="slide"
+            transparent={true}
+            visible={showUpdateModal}
+            onRequestClose={setShowUpdateModal} 
+        >
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalView}>
+                    {renderContent()}
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+export default UpdateModal;

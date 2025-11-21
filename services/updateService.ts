@@ -1,92 +1,99 @@
-// services/updateService.ts (完整覆盖文件)
+// services/updateService.ts (完整覆盖版)
 
 import { UPDATE_CONFIG, UpdateDecision } from "../constants/UpdateConfig";
 import { Platform, NativeModules } from "react-native";
 import * as FileSystem from 'expo-file-system';
-// import { getCurrentVersion } from "./versionService"; // <-- 修复: 注释掉不存在的导入
+// import { getCurrentVersion } from "./versionService"; 
 
 const isTv = Platform.isTV;
 
+// 辅助函数：裁剪版本号 (1.3.11.001 -> 1.3.11)
+const trimBuildVersion = (v: string): string => {
+    let cleaned = v.replace(/-dev$/, '').replace(/-tag$/, '');
+    const parts = cleaned.split('.');
+    if (parts.length > 3) {
+        return parts.slice(0, 3).join('.');
+    }
+    return cleaned;
+};
+
+
+const getInitialBuildTarget = (): 'dev' | 'tag' => {
+    return 'tag'; 
+};
+
+// 扩展 UpdateService 接口
 export interface UpdateService {
-    checkVersion: (currentVersion: string, desiredTarget: 'dev' | 'tag', currentBuildTarget: 'dev' | 'tag') => Promise<UpdateDecision | null>;
+    checkVersion: (currentVersion: string, desiredTarget: 'dev' | 'tag', currentBuildTarget: 'dev' | 'tag') => 
+        Promise<(UpdateDecision & { upstreamTagVersion: string | null }) | null>;
     downloadUpdate: (version: string, buildTarget: 'dev' | 'tag') => Promise<string>;
     getCurrentBuildTarget: () => 'dev' | 'tag';
     installApk: (path: string) => Promise<void>; 
 }
 
-// 假设我们通过某种方式（例如环境变量）确定当前应用的构建目标
-const getInitialBuildTarget = (): 'dev' | 'tag' => {
-    // 实际实现应取决于您的构建配置
-    // 假设默认是 'tag'
-    return 'tag'; 
-};
 
 export const updateService: UpdateService = {
 
     getCurrentBuildTarget: () => {
-        // 实际实现可能从原生代码或本地存储中获取
-        // 这里暂时使用常量
         return getInitialBuildTarget(); 
     },
 
     checkVersion: async (currentVersion, desiredTarget, currentBuildTarget) => {
-        const compare = UPDATE_CONFIG.compareVersions;
+        let upstreamTagVersion: string | null = null; 
 
         try {
-            // --- 1. 获取 Dev 通道最新版本 ---
-            const devUrl =
-                typeof UPDATE_CONFIG.CHECK_SOURCES.dev === "function"
-                    ? UPDATE_CONFIG.CHECK_SOURCES.dev(currentVersion)
-                    : UPDATE_CONFIG.CHECK_SOURCES.dev;
-
-            console.log("Checking DEV URL:", devUrl); 
-            // ⚠️ 移除 AbortSignal.timeout(10000)，避免因超时而立即失败
-            const devResponse = await fetch(devUrl); 
-            
-            if (!devResponse.ok) {
-                throw new Error(`DEV check failed with status: ${devResponse.status} for URL: ${devUrl}`);
-            }
-            
+            // --- 1. Dev 通道检查 ---
+            const devUrl = UPDATE_CONFIG.CHECK_SOURCES.dev(currentVersion);
+            const devResponse = await fetch(devUrl);
+            if (!devResponse.ok) throw new Error(`DEV check failed: ${devResponse.status} for URL: ${devUrl}`);
             const devPackage = await devResponse.json();
-            const latestDev = devPackage.version;
-            console.log("Latest DEV Version:", latestDev); 
+            let latestDev = devPackage.version; 
 
-            // --- 2. 获取 Tag 通道最新版本 ---
-            const tagUrl =
-                typeof UPDATE_CONFIG.CHECK_SOURCES.tag === "function"
-                    ? UPDATE_CONFIG.CHECK_SOURCES.tag(currentVersion)
-                    : UPDATE_CONFIG.CHECK_SOURCES.tag;
-
-            console.log("Checking TAG URL:", tagUrl); 
+            // --- 2. Tag 通道检查 ---
+            const tagUrl = UPDATE_CONFIG.CHECK_SOURCES.tag(currentVersion);
             const tagResponse = await fetch(tagUrl);
+            if (!tagResponse.ok) throw new Error(`TAG check failed: ${tagResponse.status} for URL: ${tagUrl}`);
+            const tagPackage = await tagResponse.json();
+            let latestTag = tagPackage.version;
             
-            if (!tagResponse.ok) {
-                throw new Error(`TAG check failed with status: ${tagResponse.status} for URL: ${tagUrl}`);
+            // --- 3. Upstream Tag 通道检查 ---
+            const upstreamTagUrl = UPDATE_CONFIG.CHECK_SOURCES.upstreamTag(currentVersion);
+            const upstreamTagResponse = await fetch(upstreamTagUrl);
+            
+            if (upstreamTagResponse.ok) {
+                const upstreamTagPackage = await upstreamTagResponse.json();
+                upstreamTagVersion = upstreamTagPackage.tag_name ? upstreamTagPackage.tag_name.replace(/^v/, '') : null;
+            } else {
+                 console.warn(`Upstream TAG check failed: ${upstreamTagResponse.status}.`);
             }
 
-            const tagPackage = await tagResponse.json();
-            const latestTag = tagPackage.version;
-            console.log("Latest TAG Version:", latestTag); 
+            // --- 4. 数据处理和决策 ---
+            const processedLatestDev = `${trimBuildVersion(latestDev)}-dev`; 
+            const processedLatestTag = `${latestTag}-tag`; 
 
-            // --- 3. 核心决策 ---
-            return UPDATE_CONFIG.checkForUpdate(
+            const decision = UPDATE_CONFIG.checkForUpdate(
                 currentBuildTarget,
                 currentVersion,
                 desiredTarget,
-                latestDev,
-                latestTag
+                processedLatestDev,
+                processedLatestTag
             );
+            
+            return {
+                ...decision,
+                upstreamTagVersion, 
+            };
 
         } catch (e: any) {
             console.error("Failed to check for updates. Error:", e.message || '未知错误'); 
-            // 如果检查失败，我们仍然返回一个基础结构，但 isUpdateAvailable 为 false
             return {
                 isUpdateAvailable: false,
-                latestVersion: currentVersion, // 无法获取远程版本时，默认为当前版本
+                latestVersion: currentVersion, 
                 currentTarget: desiredTarget,
                 baselineVersion: UPDATE_CONFIG.BASELINE_VERSIONS[desiredTarget],
                 availableVersions: [],
                 reason: `检查更新失败: ${e.message || '未知错误'}`,
+                upstreamTagVersion: null,
             };
         }
     },
@@ -101,8 +108,7 @@ export const updateService: UpdateService = {
             downloadPath,
             {}, 
             (downloadProgress) => {
-                // 可以在这里更新下载进度到 Store
-                // 示例：console.log(`Download progress: ${downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpected * 100}%`);
+                // 可以在这里实现进度更新逻辑
             }
         );
 
@@ -115,7 +121,6 @@ export const updateService: UpdateService = {
 
     installApk: async (path: string) => { 
         if (Platform.OS === 'android' && NativeModules.UpdateModule) {
-            // 假设您有一个桥接模块来处理原生安装
             await NativeModules.UpdateModule.install(path);
         } else {
             console.warn(`Installation not supported or UpdateModule not found for path: ${path}`);

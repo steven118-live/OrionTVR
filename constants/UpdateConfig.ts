@@ -1,4 +1,4 @@
-// constants/UpdateConfig.ts
+// constants/UpdateConfig.ts (完整覆盖版)
 
 // 导出决策结果的类型，供 Service 使用
 export interface UpdateDecision {
@@ -38,13 +38,19 @@ export const UPDATE_CONFIG = {
 
     // --- 【核心配置】 ---
 
-    // 远程检查源：定义 dev 和 tag 两种渠道的最新版本信息获取地址
+    // 远程检查源：定义 dev, tag, 和 upstreamTag 三个渠道的最新版本信息获取地址
     CHECK_SOURCES: {
-        dev: (currentVersion: string) => 
-            `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
-        
+    // 1. Tag 通道（您的 Fork: master 分支）
         tag: (currentVersion: string) => 
-            `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
+            `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
+    
+    // 2. Dev 通道（您的 Fork: dev 分支）
+        dev: (currentVersion: string) => 
+            `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/dev/package.json?t=${Date.now()}`,
+        
+    // 3. UpstreamTag 通道（Upstream/Releases API）
+        upstreamTag: (currentVersion: string) => 
+            `https://api.github.com/repos/orion-lib/OrionTV/releases/latest`, // <-- 直接抓取最新 Release API
     },
 
     // baseline 初始版：分别定义 dev / tag，确保使用带后缀的版本格式
@@ -81,21 +87,22 @@ export const UPDATE_CONFIG = {
     getDownloadUrl(version: string, buildTarget: 'dev' | 'tag'): string {
         const cleanVersion = normalizeVersionString(version); // 使用辅助函数清理
         
-        let repoUrl = "";
-        let versionTag = `v${version}`; // 使用完整的带后缀版本作为 Git Tag
+        // 修正 versionTag: 假设 Git Tag 使用 'v' + cleanVersion
+        let versionTag = `v${cleanVersion}`; 
 
+        let repoUrl = "";
+        
         if (buildTarget === 'dev') {
             repoUrl = "steven118-live/OrionTVR";
         } else {
             repoUrl = "orion-lib/OrionTV";
         }
         
-        // 假设您的发布文件名是 cleanVersion + 后缀 + .apk (例如 1.3.11.001-dev.apk)
+        // 假设您的发布文件名是 cleanVersion + 后缀 + .apk (例如 1.3.11-dev.apk)
         const filename = `orionTV.${cleanVersion}-${buildTarget}.apk`;
 
         return `https://ghfast.top/https://github.com/${repoUrl}/releases/download/${versionTag}/${filename}`;
-    },
-    // ⚠️ 注意：这里和下一个函数之间需要逗号分隔！
+    }, 
         
     // --- 【核心函数 3: 更新决策】 ---
     checkForUpdate: (

@@ -1,216 +1,100 @@
-// components/settings/UpdateSection.tsx (完整覆盖文件)
+// components/settings/UpdateSection.tsx (完整覆盖版)
 
-import React from "react";
-import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
-import { ThemedText } from "../ThemedText"; // <-- 修复路径
-import { StyledButton } from "../StyledButton"; // <-- 修复路径
-import { useUpdateStore } from "@/stores/updateStore";
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useUpdateStore } from '../../stores/updateStore'; 
 
-export function UpdateSection() {
-  const {
-    currentVersion,
-    remoteVersion, 
-    availableVersions,    
-    baselineVersion,      
-    updateAvailable,
-    downloading,
-    downloadProgress,
-    checkForUpdate,
-    isLatestVersion, 
-    error,
-    handleDownload,      
-    skipThisVersion,     
-    currentBuildTarget, // <-- 新增解构
-  } = useUpdateStore();
-
-  const [checking, setChecking] = React.useState(false);
-
-  const handleCheckUpdate = async () => {
-    setChecking(true);
-    try {
-      // 调用 checkForUpdate，不传入 desiredTarget，默认检查当前通道
-      await checkForUpdate(false); 
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  return (
-    <View style={styles.sectionContainer}>
-      <ThemedText style={styles.sectionTitle}>应用更新</ThemedText>
-
-      <View style={styles.row}>
-        <ThemedText style={styles.label}>原始码最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{remoteVersion || "x.x.xx"}</ThemedText>
-      </View>
-      <View style={styles.row}>
-        <ThemedText style={styles.label}>当前版本</ThemedText>
-        <ThemedText style={styles.value}>v{currentVersion} ({currentBuildTarget.toUpperCase()})</ThemedText>
-      </View>
-
-      <View style={styles.row}>
-        <ThemedText style={styles.label}>远程最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{remoteVersion || "x.x.xx"}</ThemedText>
-      </View>
-      {updateAvailable && availableVersions?.length && (
-        <View style={styles.row}>
-          <ThemedText style={styles.label}>可选版本</ThemedText>
-        </View>
-      )}
-
-      {/* 渲染可选版本清单 */}
-      {availableVersions?.map((ver: string, idx: number) => { 
-        let baselineNote = "";
-        
-        if (ver === baselineVersion) {
-            baselineNote = "（通道切换时可能需要安装此基线版）";
-        }
-
-        return (
-          <View key={idx} style={styles.row}>
-            <ThemedText style={styles.label}>
-              {ver} {baselineNote}
-            </ThemedText>
-            <StyledButton
-              onPress={() => handleDownload(ver)}
-              disabled={downloading}
-              style={styles.smallButton}
-            >
-              <ThemedText style={styles.buttonText}>下载</ThemedText>
-            </StyledButton>
-          </View>
-        );
-      })}
-
-      {isLatestVersion && (
-        <View style={styles.row}>
-          <ThemedText style={styles.label}>状态</ThemedText>
-          <ThemedText style={[styles.value, styles.latestVersion]}>已是最新版本</ThemedText>
-        </View>
-      )}
-
-      {error && (
-        <View style={styles.row}>
-          <ThemedText style={styles.label}>检查结果</ThemedText>
-          <ThemedText style={[styles.value, styles.errorText]}>{error}</ThemedText>
-        </View>
-      )}
-
-      {downloading && (
-        <View style={styles.row}>
-          <ThemedText style={styles.label}>下载进度</ThemedText>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <View style={styles.progressBarBackground}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${downloadProgress}%` },
-                ]}
-              />
-            </View>
-            <ThemedText style={styles.value}>{downloadProgress}%</ThemedText>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.buttonContainer}>
-        <StyledButton
-          onPress={handleCheckUpdate}
-          disabled={checking || downloading}
-          style={styles.button}
-        >
-          {checking ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <ThemedText style={styles.buttonText}>检查更新</ThemedText>
-          )}
-        </StyledButton>
-
-        {/* 跳过此版本按钮 */}
-        <StyledButton
-          onPress={() => skipThisVersion()}
-          disabled={!remoteVersion}
-          style={styles.button}
-        >
-          <ThemedText style={styles.buttonText}>跳过此版本</ThemedText>
-        </StyledButton>
-      </View>
-    </View>
-  );
-}
-
+// 临时样式定义 (TS2307 修复)
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: Platform.select({
-      ios: "rgba(255, 255, 255, 0.05)",
-      android: "rgba(255, 255, 255, 0.05)",
-      default: "transparent",
-    }),
-    borderRadius: 8,
-  },
-  sectionTitle: {
-    fontSize: Platform.isTV ? 24 : 20,
-    fontWeight: "bold",
-    marginBottom: 16,
-    paddingTop: 8,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: Platform.isTV ? 18 : 16,
-    color: "#999",
-  },
-  value: {
-    fontSize: Platform.isTV ? 18 : 16,
-  },
-  latestVersion: {
-    color: "#00bb5e",
-    fontWeight: "500",
-  },
-  errorText: {
-    color: "#ff6b6b",
-    fontWeight: "500",
-  },
-  buttonContainer: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  button: {
-    width: "40%",
-    ...(Platform.isTV && {
-      borderWidth: 2,
-      borderColor: "transparent",
-    }),
-  },
-  smallButton: {
-    width: 80,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: Platform.isTV ? 16 : 14,
-    fontWeight: "500",
-  },
-  progressBarBackground: {
-    height: 6,
-    backgroundColor: "#333",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: 6,
-    backgroundColor: "#00bb5e",
-    borderRadius: 3,
-  },
+    sectionContainer: { padding: 15, borderBottomWidth: 1, borderColor: '#ccc' },
+    title: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+    checkButton: { backgroundColor: '#007AFF', padding: 10, borderRadius: 5, marginTop: 10 },
+    buttonText: { color: 'white', textAlign: 'center' },
+    errorText: { color: 'red', marginTop: 5 },
+    updateContainer: { marginTop: 15, padding: 10, backgroundColor: '#f0f0f0', borderRadius: 5 },
+    updateAvailableText: { color: 'green', fontWeight: 'bold', marginBottom: 5 },
+    versionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
+    downloadButton: { backgroundColor: '#34C759', padding: 5, borderRadius: 5 },
+    skipButton: { marginTop: 10, padding: 5, backgroundColor: '#FF3B30', borderRadius: 5 },
+    skipText: { color: 'white', textAlign: 'center' },
+    latestText: { color: 'gray', marginTop: 10 },
+    statusText: { color: '#007AFF' },
 });
+
+
+const UpdateSection = () => {
+    // 修正所有属性名和引入
+    const {
+        currentVersion,
+        latestVersion: remoteVersion, 
+        availableVersions,
+        baselineVersion,
+        isUpdateAvailable: updateAvailable, 
+        downloading,
+        downloadProgress,
+        errorReason: error, 
+        isLatestVersion,
+        handleDownload,
+        skipThisVersion,
+        checkForUpdate, // 无参数
+        targetChannel, // 引入 targetChannel
+        currentBuildTarget,
+    } = useUpdateStore();
+
+    // 修正 checkForUpdate 调用
+    const handleCheckUpdate = async () => {
+        await checkForUpdate(); 
+    };
+
+    const renderDownloadButton = (ver: string) => {
+        if (downloading) {
+            return <Text style={styles.statusText}>下载中: {downloadProgress.toFixed(0)}%</Text>;
+        }
+        
+        return (
+            <TouchableOpacity 
+                // 修正 handleDownload 参数
+                onPress={() => handleDownload(ver, targetChannel)} 
+                style={styles.downloadButton}
+            >
+                <Text style={styles.buttonText}>下载 {ver}</Text>
+            </TouchableOpacity>
+        );
+    };
+
+    return (
+        <View style={styles.sectionContainer}>
+            <Text style={styles.title}>更新信息</Text>
+            <Text>当前版本: {currentVersion} ({currentBuildTarget})</Text>
+            <Text>最新版本: {remoteVersion}</Text>
+            <Text>基线版本: {baselineVersion}</Text>
+
+            <TouchableOpacity onPress={handleCheckUpdate} style={styles.checkButton}>
+                <Text style={styles.buttonText}>检查更新</Text>
+            </TouchableOpacity>
+
+            {error && <Text style={styles.errorText}>错误: {error}</Text>}
+
+            {updateAvailable && availableVersions.length > 0 && (
+                <View style={styles.updateContainer}>
+                    <Text style={styles.updateAvailableText}>有新版本可用!</Text>
+                    {availableVersions.map(ver => (
+                        <View key={ver} style={styles.versionRow}>
+                            <Text>版本 {ver}</Text>
+                            {renderDownloadButton(ver)}
+                        </View>
+                    ))}
+                    <TouchableOpacity onPress={skipThisVersion} style={styles.skipButton}>
+                        <Text style={styles.skipText}>跳过此版本</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {isLatestVersion && !updateAvailable && !error && (
+                <Text style={styles.latestText}>您已是最新版本。</Text>
+            )}
+        </View>
+    );
+};
+
+export default UpdateSection;
