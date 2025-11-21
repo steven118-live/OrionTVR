@@ -98,7 +98,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     
     showUpdateModal: false, 
     isLatestVersion: true, 
-    initComplete: false, 
+    initComplete: false, // ⚠️ 保持为 false，但我们在 checkForUpdate 中不再检查它
 
     currentBuildTarget: 'tag', 
     targetChannel: 'tag',      
@@ -112,29 +112,45 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
             currentVersion: version, 
             currentBuildTarget: target, 
             targetChannel: target,
-            initComplete: true, 
+            initComplete: true, // ⚠️ 在这里设置，确保初始值正确
         });
         
-        await get().checkForUpdate(false);
+        // ⚠️ 移除这里对 checkForUpdate(false) 的调用！
+        // 我们让用户点击时再检查，避免在初始化阶段因网络失败导致逻辑中断。
+        // await get().checkForUpdate(false); 
     },
     
     checkForUpdate: async (showModalIfNoUpdate = false) => {
         const state = get();
-        if (!state.initComplete) {
-            console.warn("UpdateStore not initialized. Skipping check.");
-            return;
+        // ❌ 移除这个检查，确保点击时始终尝试网络请求
+        // if (!state.initComplete) {
+        //     console.warn("UpdateStore not initialized. Skipping check.");
+        //     return;
+        // }
+
+        // ✅ 新增日志：确认函数被调用
+        console.log(`--- checkForUpdate Fired --- (showModal: ${showModalIfNoUpdate})`); 
+        
+        // 检查当前版本是否仍是默认值，如果是，强制执行初始化逻辑一次
+        if (state.currentVersion === 'loading...') {
+             await get().initialize();
         }
+        
+        // 重新获取最新的 state，特别是 version 和 target
+        const newState = get(); 
 
         set({ error: null, isLatestVersion: false }); 
 
         // 构造带后缀的版本号给 Service 层
-        const currentFullVersion = `${state.currentVersion}-${state.currentBuildTarget}`;
+        const currentFullVersion = `${newState.currentVersion}-${newState.currentBuildTarget}`;
+        
+        console.log(`Checking version for: ${currentFullVersion}`); // ������ 检查当前版本是否正确
 
         try {
             const updateInfo = await updateService.checkVersion(
                 currentFullVersion, 
-                state.targetChannel,      
-                state.currentBuildTarget
+                newState.targetChannel,      
+                newState.currentBuildTarget
             );
 
             if (!updateInfo) {
@@ -171,10 +187,17 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
                 set({ showUpdateModal: true });
             }
 
-        } catch (e) {
-            set({ error: "检查更新时发生错误。", isLatestVersion: false });
+        } catch (e: any) { // 捕获错误时，强制弹出 Modal，即使没有新版本
+            console.error("Failed to check for updates. Error:", e.message || e);
+            
+            // ⚠️ 关键：即使出错，也要更新 Store 状态，并弹出 Modal 告知用户失败
+            set({ 
+                error: `检查更新失败。请检查网络。错误: ${e.message || '未知'}`, 
+                isLatestVersion: false,
+                remoteVersion: 'VX:X:XX', // 确保显示失败状态
+            });
             if (showModalIfNoUpdate) {
-                set({ showUpdateModal: true });
+                set({ showUpdateModal: true }); 
             }
         }
     },
