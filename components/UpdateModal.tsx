@@ -1,159 +1,201 @@
-// components/UpdateModal.tsx (完整覆盖版)
+import React from "react";
+import { Modal, View, StyleSheet, ActivityIndicator, Platform } from "react-native";
+import { useUpdateStore } from "../stores/updateStore";
+import { Colors } from "../constants/Colors";
+import { StyledButton } from "./StyledButton";
+import { ThemedText } from "./ThemedText";
 
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useUpdateStore } from '../stores/updateStore'; 
+export function UpdateModal() {
+  const {
+    showUpdateModal,
+    currentVersion,
+    remoteVersion,
+    downloading,
+    downloadProgress,
+    error,
+    setShowUpdateModal,
+    startDownload,
+    installUpdate,
+    skipThisVersion,
+    downloadedPath,
+  } = useUpdateStore();
 
-// 临时样式定义 (TS2339 修复)
+  const updateButtonRef = React.useRef<View>(null);
+  const laterButtonRef = React.useRef<View>(null);
+  const skipButtonRef = React.useRef<View>(null);
+
+  async function handleUpdate() {
+    if (!downloading && !downloadedPath) {
+      // 开始下载
+      await startDownload();
+    } else if (downloadedPath) {
+      // 已下载完成，安装
+      await installUpdate();
+    }
+  }
+
+  function handleLater() {
+    setShowUpdateModal(false);
+  }
+
+  async function handleSkip() {
+    await skipThisVersion();
+  }
+
+  React.useEffect(() => {
+    if (showUpdateModal && Platform.isTV) {
+      // TV平台自动聚焦到更新按钮
+      setTimeout(() => {
+        updateButtonRef.current?.focus();
+      }, 100);
+    }
+  }, [showUpdateModal]);
+
+  const getButtonText = () => {
+    if (downloading) {
+      return `下载中 ${downloadProgress}%`;
+    } else if (downloadedPath) {
+      return "立即安装";
+    } else {
+      return "立即更新";
+    }
+  };
+
+  return (
+    <Modal visible={showUpdateModal} transparent animationType="fade" onRequestClose={handleLater}>
+      <View style={styles.overlay}>
+        <View style={styles.container}>
+          <ThemedText style={styles.title}>发现新版本</ThemedText>
+
+          <View style={styles.versionInfo}>
+            <ThemedText style={styles.versionText}>当前版本: v{currentVersion}</ThemedText>
+            <ThemedText style={styles.arrow}>→</ThemedText>
+            <ThemedText style={[styles.versionText, styles.newVersion]}>新版本: v{remoteVersion}</ThemedText>
+          </View>
+
+          {downloading && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${downloadProgress}%` }]} />
+              </View>
+              <ThemedText style={styles.progressText}>{downloadProgress}%</ThemedText>
+            </View>
+          )}
+
+          {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
+
+          <View style={styles.buttonContainer}>
+            <StyledButton
+              ref={updateButtonRef}
+              onPress={handleUpdate}
+              disabled={downloading && !downloadedPath}
+              variant="primary"
+              style={styles.button}
+            >
+              {downloading && !downloadedPath ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <ThemedText style={styles.buttonText}>{getButtonText()}</ThemedText>
+              )}
+            </StyledButton>
+
+            {!downloading && !downloadedPath && (
+              <>
+                <StyledButton ref={laterButtonRef} onPress={handleLater} variant="primary" style={styles.button}>
+                  <ThemedText style={[styles.buttonText]}>稍后再说</ThemedText>
+                </StyledButton>
+
+                <StyledButton ref={skipButtonRef} onPress={handleSkip} variant="primary" style={styles.button}>
+                  <ThemedText style={[styles.buttonText]}>跳过此版本</ThemedText>
+                </StyledButton>
+              </>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
-    modalOverlay: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    modalView: {
-        margin: 20,
-        backgroundColor: 'white',
-        borderRadius: 10,
-        padding: 35,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
-        width: '80%',
-    },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-    versionRow: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        width: '100%', 
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-    },
-    buttonGroup: {
-        flexDirection: 'row',
-        marginTop: 20,
-        justifyContent: 'space-around',
-        width: '100%',
-    },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  container: {
+    backgroundColor: Colors.dark.background,
+    borderRadius: 12,
+    padding: 24,
+    width: Platform.isTV ? 500 : "90%",
+    maxWidth: 500,
+    alignItems: "center",
+  },
+  title: {
+    fontSize: Platform.isTV ? 28 : 24,
+    fontWeight: "bold",
+    color: Colors.dark.text,
+    marginBottom: 20,
+    paddingTop: 12,
+  },
+  versionInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  versionText: {
+    fontSize: Platform.isTV ? 18 : 16,
+    color: Colors.dark.text,
+  },
+  newVersion: {
+    color: Colors.dark.primary || "#00bb5e",
+    fontWeight: "bold",
+  },
+  arrow: {
+    fontSize: Platform.isTV ? 20 : 18,
+    color: Colors.dark.text,
+    marginHorizontal: 12,
+  },
+  progressContainer: {
+    width: "100%",
+    marginBottom: 20,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: Colors.dark.border,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: Colors.dark.primary || "#00bb5e",
+  },
+  progressText: {
+    fontSize: Platform.isTV ? 16 : 14,
+    color: Colors.dark.text,
+    textAlign: "center",
+  },
+  errorText: {
+    fontSize: Platform.isTV ? 16 : 14,
+    color: "#ff4444",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  buttonContainer: {
+    width: "100%",
+    gap: 12,
+    justifyContent: "center", // 居中对齐
+    alignItems: "center",
+  },
+  button: {
+    width: "80%",
+  },
+
+  buttonText: {
+    fontSize: Platform.isTV ? 18 : 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
 });
-
-
-const UpdateModal = () => {
-    // 修正所有属性名和引入
-    const {
-        showUpdateModal,
-        availableVersions,
-        currentVersion,
-        latestVersion,
-        baselineVersion,
-        downloading,
-        downloadProgress,
-        errorReason: error, // 修正: error -> errorReason
-        closeModal: setShowUpdateModal, // 修正: setShowUpdateModal -> closeModal
-        handleDownload, 
-        installUpdate, // 修正: 无参数
-        skipThisVersion,
-        downloadedPath,
-        switchBuildTarget, 
-        currentBuildTarget,
-        targetChannel, // 引入 targetChannel
-        upstreamTagVersion,
-        isUpdateAvailable, 
-    } = useUpdateStore();
-
-    const isDownloaded = downloadedPath !== null;
-    const isError = error !== null;
-
-    if (!showUpdateModal) return null;
-
-    const renderContent = () => {
-        if (isError) {
-            return (
-                <View>
-                    <Text style={[styles.modalTitle, { color: 'red' }]}>更新检查失败</Text>
-                    <Text>原因: {error}</Text>
-                    <TouchableOpacity onPress={setShowUpdateModal}>
-                        <Text>关闭</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
-
-        if (!isUpdateAvailable) {
-            return (
-                <View style={{ alignItems: 'center' }}>
-                    <Text style={styles.modalTitle}>版本信息</Text>
-                    <Text>当前版本: {currentVersion}</Text>
-                    <Text>您已是最新版本。</Text>
-                    <Text>官方源最新版本: {upstreamTagVersion || 'N/A'}</Text>
-                    <TouchableOpacity onPress={setShowUpdateModal} style={{ marginTop: 15 }}>
-                        <Text>确定</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
-
-        return (
-            <View style={{ alignItems: 'center' }}>
-                <Text style={styles.modalTitle}>发现新版本!</Text>
-                <Text>当前版本: {currentVersion}</Text>
-                <Text>最新版本 ({targetChannel} 通道): {latestVersion}</Text>
-                <Text>官方源最新版本: {upstreamTagVersion || 'N/A'}</Text>
-
-                {availableVersions.map(ver => (
-                    <View key={ver} style={styles.versionRow}>
-                        <Text>版本 {ver}</Text>
-                        
-                        {!isDownloaded && downloading && (
-                            <Text>下载中: {downloadProgress.toFixed(0)}%</Text>
-                        )}
-                        {!isDownloaded && !downloading && (
-                            // 修正 handleDownload 参数
-                            <TouchableOpacity onPress={() => handleDownload(ver, targetChannel)}>
-                                <Text style={{ color: 'blue' }}>下载</Text>
-                            </TouchableOpacity>
-                        )}
-                        
-                        {isDownloaded && !downloading && (
-                            // 修正 installUpdate 调用
-                            <TouchableOpacity onPress={() => installUpdate()}>
-                                <Text style={{ color: 'green' }}>安装</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                ))}
-
-                <View style={styles.buttonGroup}>
-                    <TouchableOpacity onPress={skipThisVersion}>
-                        <Text>跳过</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => switchBuildTarget(targetChannel === 'dev' ? 'tag' : 'dev')}>
-                        <Text>切换到 {targetChannel === 'dev' ? 'Tag' : 'Dev'} 通道</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
-    };
-
-    return (
-        <Modal
-            animationType="slide"
-            transparent={true}
-            visible={showUpdateModal}
-            onRequestClose={setShowUpdateModal} 
-        >
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalView}>
-                    {renderContent()}
-                </View>
-            </View>
-        </Modal>
-    );
-};
-
-export default UpdateModal;

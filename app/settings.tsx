@@ -12,7 +12,7 @@ import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import { APIConfigSection } from "@/components/settings/APIConfigSection";
 import { LiveStreamSection } from "@/components/settings/LiveStreamSection";
 import { RemoteInputSection } from "@/components/settings/RemoteInputSection";
-import UpdateSection from "@/components/settings/UpdateSection"; // 修复: 默认导入
+import { UpdateSection } from "@/components/settings/UpdateSection";
 // import { VideoSourceSection } from "@/components/settings/VideoSourceSection";
 import Toast from "react-native-toast-message";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
