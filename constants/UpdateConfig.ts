@@ -10,8 +10,13 @@ export interface UpdateDecision {
     reason: string; // 方便调试
 }
 
+// 辅助函数：清理版本号后缀
+const normalizeVersionString = (v: string): string => {
+    return v ? v.replace(/-dev$/, '').replace(/-tag$/, '') : '0.0.0.000';
+};
+
 export const UPDATE_CONFIG = {
-    // --- 【原有配置，重新添加以解决 TS 错误】 ---
+    // --- 【原有配置】 ---
     AUTO_CHECK: true,
     CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
     DOWNLOAD_TIMEOUT: 10 * 60 * 1000, // 10分钟
@@ -31,64 +36,80 @@ export const UPDATE_CONFIG = {
     GITHUB_RAW_URL:
         `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
 
-    // --- 【新增核心配置】 ---
+    // --- 【核心配置】 ---
 
     // 远程检查源：定义 dev 和 tag 两种渠道的最新版本信息获取地址
     CHECK_SOURCES: {
-        // dev 通道检查源
         dev: (currentVersion: string) => 
             `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
         
-        // tag 通道检查源
         tag: (currentVersion: string) => 
             `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
     },
 
-    // baseline 初始版：分别定义 dev / tag，用于跨通道切换时的强制基线升级
+    // baseline 初始版：分别定义 dev / tag，确保使用带后缀的版本格式
     BASELINE_VERSIONS: {
-        dev: "1.3.11.001",
-        tag: "1.3.11.001",
+        dev: "1.3.11.001-dev", // 使用您的实际版本格式
+        tag: "1.3.11.001-tag", // 使用您的实际版本格式
     },
     
     // 强制版本：定义必须跳过的版本（如果需要）
     MIN_FORCE_VERSION: { 
-        dev: "1.0.0.001", 
-        tag: "1.0.0.001" 
+        dev: "1.0.0.001-dev", 
+        tag: "1.0.0.001-tag" 
     }, 
 
-    // 获取平台特定的下载URL (新增 buildTarget 参数)
-    getDownloadUrl(version: string, buildTarget: 'dev' | 'tag'): string {
-        const appendix = buildTarget === 'dev' ? '-dev' : '';
-        return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}${appendix}.apk`;
-    },
-
-    // --- 【新增核心逻辑函数】 ---
-
-    // 版本比对函数
+    // --- 【核心函数 1: 版本比较】 ---
     compareVersions: (v1: string, v2: string): number => {
-        const p1 = v1.split(".").map(Number);
-        const p2 = v2.split(".").map(Number);
-        for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
-            const n1 = p1[i] ?? 0;
-            const n2 = p2[i] ?? 0;
-            if (n1 > n2) return 1;
-            if (n1 < n2) return -1;
+        const n1 = normalizeVersionString(v1);
+        const n2 = normalizeVersionString(v2);
+
+        const parts1 = n1.split('.').map(Number);
+        const parts2 = n2.split('.').map(Number);
+
+        for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+            const p1 = parts1[i] || 0;
+            const p2 = parts2[i] || 0;
+
+            if (p1 < p2) return -1;
+            if (p1 > p2) return 1;
         }
         return 0;
     },
 
-    // 核心决策函数：处理跨通道切换和基线强制逻辑
+    // --- 【核心函数 2: 下载链接】 ---
+    getDownloadUrl(version: string, buildTarget: 'dev' | 'tag'): string {
+        const cleanVersion = normalizeVersionString(version); // 使用辅助函数清理
+        
+        let repoUrl = "";
+        let versionTag = `v${version}`; // 使用完整的带后缀版本作为 Git Tag
+
+        if (buildTarget === 'dev') {
+            repoUrl = "steven118-live/OrionTVR";
+        } else {
+            repoUrl = "orion-lib/OrionTV";
+        }
+        
+        // 假设您的发布文件名是 cleanVersion + 后缀 + .apk (例如 1.3.11.001-dev.apk)
+        const filename = `orionTV.${cleanVersion}-${buildTarget}.apk`;
+
+        return `https://ghfast.top/https://github.com/${repoUrl}/releases/download/${versionTag}/${filename}`;
+    },
+    // ⚠️ 注意：这里和下一个函数之间需要逗号分隔！
+        
+    // --- 【核心函数 3: 更新决策】 ---
     checkForUpdate: (
         currentBuildTarget: 'dev' | 'tag',
-        currentVersion: string,
+        currentVersion: string, // 带后缀
         desiredTarget: 'dev' | 'tag',
-        latestDev: string,
-        latestTag: string
+        latestDev: string,      // 带后缀
+        latestTag: string       // 带后缀
     ): UpdateDecision => {
+
         const compare = UPDATE_CONFIG.compareVersions;
         const baseline = UPDATE_CONFIG.BASELINE_VERSIONS;
-        
-        // --- 1. 处理目标通道切换逻辑 ---
+
+        // 1. 处理目标通道切换逻辑
         if (currentBuildTarget !== desiredTarget) {
             const targetBaseline = baseline[desiredTarget];
 
@@ -130,7 +151,7 @@ export const UPDATE_CONFIG = {
             };
         }
         
-        // --- 2. 处理当前通道的正常升级 ---
+        // 2. 处理当前通道的正常升级 (currentBuildTarget === desiredTarget)
         
         const latestCurrentVersion = currentBuildTarget === 'dev' ? latestDev : latestTag;
         

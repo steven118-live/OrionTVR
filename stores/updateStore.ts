@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { updateService } from "../services/updateService";
 import { UPDATE_CONFIG } from "../constants/UpdateConfig";
 import { Platform } from "react-native";
-import * as Application from 'expo-application'; // <-- 恢复真实导入
+import * as Application from 'expo-application'; 
 
 // 辅助函数：从完整版本号中提取干净的版本号和通道
 const extractVersionAndTarget = (fullVersion: string): { version: string; target: 'dev' | 'tag' } => {
@@ -39,16 +39,14 @@ const normalizeVersion = (v: string): string => {
 // 修正后的获取当前版本函数 (使用 expo-application)
 const getActualCurrentVersion = (): { version: string, target: 'dev' | 'tag' } => {
     // 优先使用 expo-application 提供的原生版本号
-    const defaultVersion = Application.nativeApplicationVersion || '1.0.0.000';
+    let rawVersion = Application.nativeApplicationVersion || null;
     
     // 决定正确的初始构建目标 (Service 层提供)
     const initialTarget = updateService.getCurrentBuildTarget();
-    
-    let currentVersion = defaultVersion;
-    
-    // ⚠️ 临时模拟逻辑：如果在 TV 上且版本号为默认的 '1.0.0.000' (这在某些构建环境中是默认值)，
-    // 我们强制使用您的实际版本格式进行初始化，确保后续检查更新的逻辑正确。
-    if (Platform.isTV && normalizeVersion(defaultVersion) === '1.0.0.000') {
+    let currentVersion = rawVersion || '1.0.0.000'; // 使用原生或默认
+
+    // ⚠️ 强制 TV 环境下的初始版本格式：如果无法获取原生版本，我们强制使用已知的版本格式。
+    if (Platform.isTV && normalizeVersion(currentVersion) === '1.0.0.000') {
         currentVersion = `1.3.11.001-${initialTarget}`; 
     }
     

@@ -39,9 +39,17 @@ export const updateService: UpdateService = {
                     ? UPDATE_CONFIG.CHECK_SOURCES.dev(currentVersion)
                     : UPDATE_CONFIG.CHECK_SOURCES.dev;
 
-            const devResponse = await fetch(devUrl);
+            console.log("Checking DEV URL:", devUrl); 
+            // ⚠️ 移除 AbortSignal.timeout(10000)，避免因超时而立即失败
+            const devResponse = await fetch(devUrl); 
+            
+            if (!devResponse.ok) {
+                throw new Error(`DEV check failed with status: ${devResponse.status} for URL: ${devUrl}`);
+            }
+            
             const devPackage = await devResponse.json();
             const latestDev = devPackage.version;
+            console.log("Latest DEV Version:", latestDev); 
 
             // --- 2. 获取 Tag 通道最新版本 ---
             const tagUrl =
@@ -49,9 +57,16 @@ export const updateService: UpdateService = {
                     ? UPDATE_CONFIG.CHECK_SOURCES.tag(currentVersion)
                     : UPDATE_CONFIG.CHECK_SOURCES.tag;
 
+            console.log("Checking TAG URL:", tagUrl); 
             const tagResponse = await fetch(tagUrl);
+            
+            if (!tagResponse.ok) {
+                throw new Error(`TAG check failed with status: ${tagResponse.status} for URL: ${tagUrl}`);
+            }
+
             const tagPackage = await tagResponse.json();
             const latestTag = tagPackage.version;
+            console.log("Latest TAG Version:", latestTag); 
 
             // --- 3. 核心决策 ---
             return UPDATE_CONFIG.checkForUpdate(
@@ -62,9 +77,17 @@ export const updateService: UpdateService = {
                 latestTag
             );
 
-        } catch (e) {
-            console.error("Failed to check for updates:", e);
-            return null;
+        } catch (e: any) {
+            console.error("Failed to check for updates. Error:", e.message || '未知错误'); 
+            // 如果检查失败，我们仍然返回一个基础结构，但 isUpdateAvailable 为 false
+            return {
+                isUpdateAvailable: false,
+                latestVersion: currentVersion, // 无法获取远程版本时，默认为当前版本
+                currentTarget: desiredTarget,
+                baselineVersion: UPDATE_CONFIG.BASELINE_VERSIONS[desiredTarget],
+                availableVersions: [],
+                reason: `检查更新失败: ${e.message || '未知错误'}`,
+            };
         }
     },
 
