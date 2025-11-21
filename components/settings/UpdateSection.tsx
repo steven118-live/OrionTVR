@@ -1,24 +1,25 @@
+// components/settings/UpdateSection.tsx (完整覆盖文件)
+
 import React from "react";
 import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
-import { ThemedText } from "../ThemedText";
-import { StyledButton } from "../StyledButton";
+import { ThemedText } from "../ThemedText"; // <-- 修复路径
+import { StyledButton } from "../StyledButton"; // <-- 修复路径
 import { useUpdateStore } from "@/stores/updateStore";
 
 export function UpdateSection() {
   const {
     currentVersion,
-    upstreamVersion,
-    availableVersions,   // 可选版本清单
-    baselineVersion,     // baseline 版本
+    remoteVersion, 
+    availableVersions,    
+    baselineVersion,      
     updateAvailable,
     downloading,
     downloadProgress,
     checkForUpdate,
-    isLatestVersion,
+    isLatestVersion, 
     error,
-    handleDownload,      // 下载函数
-    skipThisVersion,     // 跳过此版本
-    remoteVersion,
+    handleDownload,      
+    skipThisVersion,     
   } = useUpdateStore();
 
   const [checking, setChecking] = React.useState(false);
@@ -26,7 +27,8 @@ export function UpdateSection() {
   const handleCheckUpdate = async () => {
     setChecking(true);
     try {
-      await checkForUpdate(false);
+      // 调用 checkForUpdate，不传入 desiredTarget，默认检查当前通道
+      await checkForUpdate(false); 
     } finally {
       setChecking(false);
     }
@@ -38,30 +40,25 @@ export function UpdateSection() {
 
       <View style={styles.row}>
         <ThemedText style={styles.label}>原始码最新版本</ThemedText>
-        <ThemedText style={styles.value}>v{upstreamVersion || "x.x.xx"}</ThemedText>
+        <ThemedText style={styles.value}>v{remoteVersion || "x.x.xx"}</ThemedText>
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>当前版本</ThemedText>
         <ThemedText style={styles.value}>v{currentVersion}</ThemedText>
       </View>
 
-      {updateAvailable && (
+      {updateAvailable && availableVersions?.length && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>可选版本</ThemedText>
         </View>
       )}
 
       {/* 渲染可选版本清单 */}
-      {availableVersions?.map((ver, idx) => {
+      {availableVersions?.map((ver: string, idx: number) => { 
         let baselineNote = "";
+        
         if (ver === baselineVersion) {
-          if (ver.includes("dev")) {
-            baselineNote = "（切换到 dev版 前须安装此版）";
-          } else if (ver.includes("tag")) {
-            baselineNote = "（切换到 正式版 前须安装此版）";
-          } else {
-            baselineNote = "（切换前必须安装）";
-          }
+            baselineNote = "（通道切换时可能需要安装此基线版）";
         }
 
         return (

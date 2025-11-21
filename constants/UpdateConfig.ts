@@ -1,156 +1,159 @@
 // constants/UpdateConfig.ts
 
-// 1. 定義函數型別：接受版本字串，返回 URL 字串
-type VersionCheckFunction = (currentVersion: string) => string;
-
-// 2. 定義 CHECK_SOURCES 的結構：允許 string 或 function
-interface UpdateSources {
-  dev: string | VersionCheckFunction;
-  tag: string | VersionCheckFunction;
-}
-
-// 3. 定義整個 UPDATE_CONFIG 物件的介面，包含所有屬性
-interface UpdateConfigType {
-  AUTO_CHECK: boolean;
-  CHECK_INTERVAL: number;
-  CHECK_SOURCES: UpdateSources; // 應用修正後的型別
-  UPSTREAM_SOURCE: string;
-  getDownloadUrl(version: string, buildTarget: string): string;
-  SHOW_RELEASE_NOTES: boolean;
-  SHOW_BUILD_INFO: boolean;
-  ALLOW_SKIP_VERSION: boolean;
-  BASELINE_VERSIONS: {
-    dev: string;
-    tag: string;
-  };
-  ALLOW_UPDATE_RULES(buildTarget: string, newVersion: string): boolean;
-  getAvailableVersions(latestDev: string, latestTag: string): string[];
-  DOWNLOAD_TIMEOUT: number;
-  AUTO_DOWNLOAD_ON_WIFI: boolean;
-  NOTIFICATION: {
-    ENABLED: boolean;
-    TITLE: string;
-    DOWNLOADING_TEXT: string;
-    DOWNLOAD_COMPLETE_TEXT: string;
-  };
-  checkForUpdate(
-    currentBuildTarget: "dev" | "tag",
-    latestDev: string,
-    latestTag: string
-  ): {
-    autoCheck: boolean;
-    allowSkip: boolean;
-    showReleaseNotes: boolean;
-    showBuildInfo: boolean;
-    currentTarget: "dev" | "tag";
+// 导出决策结果的类型，供 Service 使用
+export interface UpdateDecision {
+    isUpdateAvailable: boolean;
     latestVersion: string;
+    currentTarget: 'dev' | 'tag';
     baselineVersion: string;
     availableVersions: string[];
-    upstreamSource: string;
-  };
+    reason: string; // 方便调试
 }
 
-export const UPDATE_CONFIG: UpdateConfigType = {
-  // 自动检查更新
-  AUTO_CHECK: true,
+export const UPDATE_CONFIG = {
+    // --- 【原有配置，重新添加以解决 TS 错误】 ---
+    AUTO_CHECK: true,
+    CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
+    DOWNLOAD_TIMEOUT: 10 * 60 * 1000, // 10分钟
+    SHOW_RELEASE_NOTES: true,
+    ALLOW_SKIP_VERSION: true,
+    AUTO_DOWNLOAD_ON_WIFI: false,
+    NOTIFICATION: {
+        ENABLED: true,
+        TITLE: "OrionTV 更新",
+        DOWNLOADING_TEXT: "正在下载新版本...",
+        DOWNLOAD_COMPLETE_TEXT: "下载完成，点击安装",
+    },
+    
+    // GitHub相关URL (保留，用于兼容旧代码或作为参考)
+    ORIONTV_ORG_GITHUB_RAW_URL:
+        `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
+    GITHUB_RAW_URL:
+        `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
 
-  // 检查更新间隔（毫秒）
-  CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
+    // --- 【新增核心配置】 ---
 
-  // ✅ 你自己的版本檢查來源 (fork repo)
-  // dev 是 string，tag 是 function。現在因為有介面定義，TypeScript 能正確處理聯合型別。
-  CHECK_SOURCES: {
-    dev: `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/refs/heads/dev/package.json?t=${Date.now()}`,
-    tag: (version: string) =>
-      `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/refs/tags/v${version}/package.json?t=${Date.now()}`,
-  },
+    // 远程检查源：定义 dev 和 tag 两种渠道的最新版本信息获取地址
+    CHECK_SOURCES: {
+        // dev 通道检查源
+        dev: (currentVersion: string) => 
+            `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
+        
+        // tag 通道检查源
+        tag: (currentVersion: string) => 
+            `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
+    },
 
-  // ✅ Upstream 官方版本檢查 (永遠抓 master)
-  UPSTREAM_SOURCE: `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
+    // baseline 初始版：分别定义 dev / tag，用于跨通道切换时的强制基线升级
+    BASELINE_VERSIONS: {
+        dev: "1.3.11.001",
+        tag: "1.3.11.001",
+    },
+    
+    // 强制版本：定义必须跳过的版本（如果需要）
+    MIN_FORCE_VERSION: { 
+        dev: "1.0.0.001", 
+        tag: "1.0.0.001" 
+    }, 
 
-  // 下载 URL：符合 workflow 的文件命名规则（和 tag 對齊）
-  getDownloadUrl(version: string, buildTarget: string): string {
-    return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/${version}.apk`;
-  },
+    // 获取平台特定的下载URL (新增 buildTarget 参数)
+    getDownloadUrl(version: string, buildTarget: 'dev' | 'tag'): string {
+        const appendix = buildTarget === 'dev' ? '-dev' : '';
+        return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}${appendix}.apk`;
+    },
 
-  // 是否显示更新日志
-  SHOW_RELEASE_NOTES: true,
+    // --- 【新增核心逻辑函数】 ---
 
-  // 是否显示 Build target / mode / commit
-  SHOW_BUILD_INFO: true,
+    // 版本比对函数
+    compareVersions: (v1: string, v2: string): number => {
+        const p1 = v1.split(".").map(Number);
+        const p2 = v2.split(".").map(Number);
+        for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+            const n1 = p1[i] ?? 0;
+            const n2 = p2[i] ?? 0;
+            if (n1 > n2) return 1;
+            if (n1 < n2) return -1;
+        }
+        return 0;
+    },
 
-  // 是否允许跳过版本
-  ALLOW_SKIP_VERSION: true,
+    // 核心决策函数：处理跨通道切换和基线强制逻辑
+    checkForUpdate: (
+        currentBuildTarget: 'dev' | 'tag',
+        currentVersion: string,
+        desiredTarget: 'dev' | 'tag',
+        latestDev: string,
+        latestTag: string
+    ): UpdateDecision => {
+        const compare = UPDATE_CONFIG.compareVersions;
+        const baseline = UPDATE_CONFIG.BASELINE_VERSIONS;
+        
+        // --- 1. 处理目标通道切换逻辑 ---
+        if (currentBuildTarget !== desiredTarget) {
+            const targetBaseline = baseline[desiredTarget];
 
-  // baseline 初始版：分别定义 dev / tag
-  BASELINE_VERSIONS: {
-    dev: "1.3.11.001",
-    tag: "1.3.11.001",
-  },
-
-  // 允许更新规则：必须经过 baseline
-  ALLOW_UPDATE_RULES(buildTarget: string, newVersion: string): boolean {
-    if (buildTarget === "dev") {
-      return newVersion.endsWith("-dev") || newVersion === this.BASELINE_VERSIONS.dev;
+            // 检查当前版本是否低于目标通道的基线版本 (即：是否需要强制更新到基线)
+            if (compare(currentVersion, targetBaseline) < 0) {
+                 return {
+                    isUpdateAvailable: true,
+                    latestVersion: targetBaseline,
+                    currentTarget: desiredTarget,
+                    baselineVersion: targetBaseline,
+                    availableVersions: [targetBaseline],
+                    reason: "强制切换目标通道，需先更新至基线版本",
+                 };
+            }
+            
+            // 如果高于或等于基线，则检查该目标通道的最新版本
+            const latestTargetVersion = desiredTarget === 'dev' ? latestDev : latestTag;
+            
+            if (compare(currentVersion, latestTargetVersion) < 0) {
+                // 有更高版本可用，但至少满足了基线要求
+                return {
+                    isUpdateAvailable: true,
+                    latestVersion: latestTargetVersion,
+                    currentTarget: desiredTarget,
+                    baselineVersion: baseline[desiredTarget],
+                    availableVersions: [latestTargetVersion],
+                    reason: "目标通道有新版本",
+                };
+            }
+            
+            // 已是最新版本 (在目标通道下)
+            return {
+                isUpdateAvailable: false,
+                latestVersion: currentVersion,
+                currentTarget: desiredTarget,
+                baselineVersion: baseline[desiredTarget],
+                availableVersions: [],
+                reason: "目标通道已是最新或版本一致",
+            };
+        }
+        
+        // --- 2. 处理当前通道的正常升级 ---
+        
+        const latestCurrentVersion = currentBuildTarget === 'dev' ? latestDev : latestTag;
+        
+        if (compare(currentVersion, latestCurrentVersion) < 0) {
+            // 当前通道有更新
+            return {
+                isUpdateAvailable: true,
+                latestVersion: latestCurrentVersion,
+                currentTarget: currentBuildTarget,
+                baselineVersion: baseline[currentBuildTarget],
+                availableVersions: [latestCurrentVersion],
+                reason: "当前通道有新版本",
+            };
+        }
+        
+        // 无更新
+        return {
+            isUpdateAvailable: false,
+            latestVersion: currentVersion,
+            currentTarget: currentBuildTarget,
+            baselineVersion: baseline[currentBuildTarget],
+            availableVersions: [],
+            reason: "已是最新版本",
+        };
     }
-    if (buildTarget === "tag") {
-      return (
-        /^\d+\.\d+\.\d+\.\d+$/.test(newVersion) ||
-        newVersion === this.BASELINE_VERSIONS.tag
-      );
-    }
-    return false;
-  },
-
-  // 返回可选版本清单：最新版 + baseline
-  getAvailableVersions(latestDev: string, latestTag: string): string[] {
-    const versions: string[] = [];
-
-    const addUnique = (label: string, version: string) => {
-      const entry = `${label} ${version}`;
-      if (!versions.includes(entry)) {
-        versions.push(entry);
-      }
-    };
-
-    addUnique("dev", latestDev);
-    addUnique("tag", latestTag);
-    addUnique("dev", this.BASELINE_VERSIONS.dev);
-    addUnique("tag", this.BASELINE_VERSIONS.tag);
-
-    return versions;
-  },
-
-  // 下载超时时间（毫秒）
-  DOWNLOAD_TIMEOUT: 10 * 60 * 1000, // 10分钟
-
-  // 是否在WIFI下自动下载
-  AUTO_DOWNLOAD_ON_WIFI: false,
-
-  // 更新通知设置
-  NOTIFICATION: {
-    ENABLED: true,
-    TITLE: "OrionTV 更新",
-    DOWNLOADING_TEXT: "正在下载新版本...",
-    DOWNLOAD_COMPLETE_TEXT: "下载完成，点击安装",
-  },
-
-  // 核心檢查函數
-  checkForUpdate(currentBuildTarget: "dev" | "tag", latestDev: string, latestTag: string) {
-    const available = this.getAvailableVersions(latestDev, latestTag);
-
-    return {
-      autoCheck: this.AUTO_CHECK,
-      allowSkip: this.ALLOW_SKIP_VERSION,
-      showReleaseNotes: this.SHOW_RELEASE_NOTES,
-      showBuildInfo: this.SHOW_BUILD_INFO,
-      currentTarget: currentBuildTarget,
-      latestVersion: currentBuildTarget === "dev" ? latestDev : latestTag,
-      baselineVersion: this.BASELINE_VERSIONS[currentBuildTarget],
-      availableVersions: available.filter(v =>
-        this.ALLOW_UPDATE_RULES(currentBuildTarget, v.split(" ")[1])
-      ),
-      upstreamSource: this.UPSTREAM_SOURCE, // ✅ 額外提供 upstream 最新版本檢查
-    };
-  },
 };
