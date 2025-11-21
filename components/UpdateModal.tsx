@@ -59,9 +59,9 @@ export function UpdateModal() {
         <View style={styles.container}>
           <ThemedText style={styles.title}>发现新版本</ThemedText>
 
-          {/* 当前运行版本信息 */}
+          {/* 当前运行版本信息 (修正显示格式) */}
           <View style={styles.versionInfo}>
-            <ThemedText style={styles.versionText}>当前运行: v{currentVersion} ({currentBuildTarget})</ThemedText>
+            <ThemedText style={styles.versionText}>当前运行: v{currentVersion} ({currentBuildTarget.toUpperCase()})</ThemedText>
           </View>
 
           {/* 目标通道信息 */}

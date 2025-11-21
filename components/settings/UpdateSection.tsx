@@ -20,6 +20,7 @@ export function UpdateSection() {
     error,
     handleDownload,      
     skipThisVersion,     
+    currentBuildTarget, // <-- 新增解构
   } = useUpdateStore();
 
   const [checking, setChecking] = React.useState(false);
@@ -44,9 +45,13 @@ export function UpdateSection() {
       </View>
       <View style={styles.row}>
         <ThemedText style={styles.label}>当前版本</ThemedText>
-        <ThemedText style={styles.value}>v{currentVersion}</ThemedText>
+        <ThemedText style={styles.value}>v{currentVersion} ({currentBuildTarget.toUpperCase()})</ThemedText>
       </View>
 
+      <View style={styles.row}>
+        <ThemedText style={styles.label}>远程最新版本</ThemedText>
+        <ThemedText style={styles.value}>v{remoteVersion || "x.x.xx"}</ThemedText>
+      </View>
       {updateAvailable && availableVersions?.length && (
         <View style={styles.row}>
           <ThemedText style={styles.label}>可选版本</ThemedText>
