@@ -1,210 +1,176 @@
+// stores/updateStore.ts
 import { create } from 'zustand';
-import updateService from '../services/updateService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Toast from 'react-native-toast-message';
-import Logger from '@/utils/Logger';
-
-const logger = Logger.withTag('UpdateStore');
+import { Platform, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as Linking from 'expo-linking';
+import { UPDATE_CONFIG } from '@/constants/UpdateConfig';
 
 interface UpdateState {
-  // 状态
-  updateAvailable: boolean;
+  // 狀態
   currentVersion: string;
-  upstreamVersion: string; // 新增：保留 oriontv.org 的版本資訊
-  remoteVersion: string;
-  downloadUrl: string;
+  remoteVersion: string | null;
+  updateAvailable: boolean;
   downloading: boolean;
   downloadProgress: number;
   downloadedPath: string | null;
+  isLatestVersion: boolean;
+  showUpdateModal: boolean;
+  skippedVersion: string | null;
   error: string | null;
   lastCheckTime: number;
-  skipVersion: string | null;
-  showUpdateModal: boolean;
-  isLatestVersion: boolean; // 新增：是否已是最新版本
-  
-  // 操作
-  checkForUpdate: (silent?: boolean) => Promise<void>;
+
+  // 初始化
+  initialize: () => void;
+
+  // 動作
+  checkForUpdate: () => Promise<void>;
   startDownload: () => Promise<void>;
   installUpdate: () => Promise<void>;
+  skipThisVersion: () => void;
   setShowUpdateModal: (show: boolean) => void;
-  skipThisVersion: () => Promise<void>;
-  reset: () => void;
+  resetError: () => void;
 }
 
-const STORAGE_KEYS = {
-  LAST_CHECK_TIME: 'update_last_check_time',
-  SKIP_VERSION: 'update_skip_version',
-};
-
 export const useUpdateStore = create<UpdateState>((set, get) => ({
-  // 初始状态
+  currentVersion: "1.0.0", // 請改成你 package.json 的 version
+  remoteVersion: null,
   updateAvailable: false,
-  currentVersion: updateService.getCurrentVersion(),
-  upstreamVersion: '',
-  remoteVersion: '',
-  downloadUrl: '',
   downloading: false,
   downloadProgress: 0,
   downloadedPath: null,
+  isLatestVersion: false,
+  showUpdateModal: false,
+  skippedVersion: null,
   error: null,
   lastCheckTime: 0,
-  skipVersion: null,
-  showUpdateModal: false,
-  isLatestVersion: false, // 新增：初始为false
 
-  // 检查更新
-  checkForUpdate: async (silent = false) => {
+  // 初始化：讀取本地版本 + 跳過版本記錄（可搭配 AsyncStorage 持久化）
+  initialize: () => {
+    // 這裡未來可加入從 AsyncStorage 讀取 skippedVersion
+    set({ lastCheckTime: Date.now() });
+  },
+
+  checkForUpdate: async () => {
+    const { currentVersion } = get();
+    set({ error: null, remoteVersion: null, updateAvailable: false });
+
     try {
-      set({ error: null, isLatestVersion: false });
-
-      // 获取跳过的版本
-      const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
-      
-      const versionInfo = await updateService.checkVersion();
-      const isUpdateAvailable = updateService.isUpdateAvailable(versionInfo.version);
-      
-      // 如果有更新且不是要跳过的版本
-      const shouldShowUpdate = isUpdateAvailable && versionInfo.version !== skipVersion;
-
-      // 检查是否已经是最新版本
-      const isLatest = !isUpdateAvailable;
-      set({
-        upstreamVersion: versionInfo.upstreamVersion ?? '',
-        remoteVersion: versionInfo.version,
-        downloadUrl: versionInfo.downloadUrl,
-        updateAvailable: isUpdateAvailable,
-        lastCheckTime: Date.now(),
-        skipVersion,
-        showUpdateModal: shouldShowUpdate && !silent,
-        isLatestVersion: isLatest,
+      const response = await fetch(UPDATE_CONFIG.GITHUB_RAW_URL, {
+        cache: 'no-store',
       });
 
-      // 如果是手动检查且已是最新版本，显示提示
-      if (!silent && isLatest) {
-        Toast.show({
-          type: 'success',
-          text1: '已是最新版本',
-          text2: `当前版本 v${updateService.getCurrentVersion()} 已是最新版本`,
-          visibilityTime: 3000,
-        });
+      if (!response.ok) throw new Error('無法連接更新伺服器');
+
+      const data = await response.json();
+      const latestVersion: string = data.version?.trim();
+
+      if (!latestVersion) throw new Error('版本資訊解析失敗');
+
+      // 檢查是否跳過
+      const { skippedVersion } = get();
+      if (UPDATE_CONFIG.ALLOW_SKIP_VERSION && skippedVersion === latestVersion) {
+        set({ isLatestVersion: true, lastCheckTime: Date.now() });
+        return;
       }
 
-      // 保存最后检查时间
-      await AsyncStorage.setItem(
-        STORAGE_KEYS.LAST_CHECK_TIME,
-        Date.now().toString()
-      );
-    } catch (error) {
-      // console.info('检查更新失败:', error);
-      set({ 
-        error: error instanceof Error ? error.message : '检查更新失败',
-        updateAvailable: false,
+      if (currentVersion === latestVersion) {
+        set({ remoteVersion: latestVersion, isLatestVersion: true, lastCheckTime: Date.now() });
+        return;
+      }
+
+      // 有新版本！
+      set({
+        remoteVersion: latestVersion,
+        updateAvailable: true,
         isLatestVersion: false,
+        showUpdateModal: true,
+        lastCheckTime: Date.now(),
       });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '檢查更新失敗';
+      set({ error: msg });
+      console.warn('[UpdateStore] 檢查更新失敗:', msg);
     }
   },
 
-  // 开始下载
   startDownload: async () => {
-    const { downloadUrl } = get();
-    
-    if (!downloadUrl) {
-      set({ error: '下载地址无效' });
-      return;
-    }
+    const { remoteVersion } = get();
+    if (!remoteVersion || get().downloading) return;
+
+    const downloadUrl = UPDATE_CONFIG.getDownloadUrl(remoteVersion);
+    const fileUri = `${FileSystem.cacheDirectory}orionTV_${remoteVersion}.apk`;
+
+    set({ downloading: true, downloadProgress: 0, error: null });
 
     try {
-      set({ 
-        downloading: true, 
-        downloadProgress: 0, 
-        error: null 
-      });
-
-      const filePath = await updateService.downloadApk(
+      const downloadResumable = FileSystem.createDownloadResumable(
         downloadUrl,
-        (progress) => {
-          set({ downloadProgress: progress });
+        fileUri,
+        {},
+        (downloadProgress) => {
+          const progress =
+            downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          set({ downloadProgress: Math.round(progress * 100) });
         }
       );
 
-      set({ 
-        downloadedPath: filePath,
+      const result = await downloadResumable.downloadAsync();
+
+      if (result?.status !== 200) throw new Error('下載失敗');
+
+      set({
         downloading: false,
         downloadProgress: 100,
+        downloadedPath: result.uri,
+        updateAvailable: true,
       });
-    } catch (error) {
-      // console.info('下载失败:', error);
-      set({ 
-        downloading: false,
-        downloadProgress: 0,
-        error: error instanceof Error ? error.message : '下载失败',
-      });
+
+      Alert.alert('下載完成', '更新包已準備好，是否立即安裝？', [
+        { text: '稍後', style: 'cancel' },
+        { text: '立即安裝', onPress: () => get().installUpdate() },
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '下載失敗';
+      set({ error: msg, downloading: false });
+      Alert.alert('下載失敗', msg);
     }
   },
 
-  // 安装更新
   installUpdate: async () => {
     const { downloadedPath } = get();
-    
-    if (!downloadedPath) {
-      set({ error: '安装文件不存在' });
-      return;
-    }
+    if (!downloadedPath || Platform.OS !== 'android') return;
 
     try {
-      await updateService.installApk(downloadedPath);
-      // 安装开始后，关闭弹窗
-      set({ showUpdateModal: false });
-    } catch (error) {
-      logger.error('安装失败:', error);
-      set({ 
-        error: error instanceof Error ? error.message : '安装失败',
+      const contentUri = await FileSystem.getContentUriAsync(downloadedPath);
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        type: 'application/vnd.android.package-archive',
       });
+    } catch (err) {
+      Alert.alert('安裝失敗', '無法開啟安裝程式，請手動安裝已下載的 APK');
+      // 備用：開啟檔案管理器
+      Linking.openURL(FileSystem.documentDirectory!);
     }
   },
 
-  // 设置显示更新弹窗
-  setShowUpdateModal: (show: boolean) => {
-    set({ showUpdateModal: show });
-  },
-
-  // 跳过此版本
-  skipThisVersion: async () => {
+  skipThisVersion: () => {
     const { remoteVersion } = get();
-    
-    if (remoteVersion) {
-      await AsyncStorage.setItem(STORAGE_KEYS.SKIP_VERSION, remoteVersion);
-      set({ 
-        skipVersion: remoteVersion,
-        showUpdateModal: false,
-      });
-    }
-  },
+    if (!remoteVersion) return;
 
-  // 重置状态
-  reset: () => {
     set({
-      downloading: false,
-      downloadProgress: 0,
-      downloadedPath: null,
-      error: null,
+      skippedVersion: remoteVersion,
       showUpdateModal: false,
-      isLatestVersion: false, // 重置时也要重置这个状态
+      updateAvailable: false,
+      isLatestVersion: true,
     });
-  },
-}));
 
-// 初始化时加载存储的数据
-export const initUpdateStore = async () => {
-  try {
-    const lastCheckTime = await AsyncStorage.getItem(STORAGE_KEYS.LAST_CHECK_TIME);
-    const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
-    
-    useUpdateStore.setState({
-      lastCheckTime: lastCheckTime ? parseInt(lastCheckTime, 10) : 0,
-      skipVersion: skipVersion || null,
-    });
-  } catch (error) {
-    logger.error('初始化更新存储失败:', error);
-  }
-};
+    // 這裡未來可加入 AsyncStorage.setItem('skippedVersion', remoteVersion)
+    Alert.alert('已跳過', `已跳過版本 v${remoteVersion}，下次啟動不再提醒`);
+  },
+
+  setShowUpdateModal: (show) => set({ showUpdateModal: show }),
+
+  resetError: () => set({ error: null }),
+}));
