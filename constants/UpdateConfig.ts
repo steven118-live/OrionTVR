@@ -1,33 +1,36 @@
 export const UPDATE_CONFIG = {
-  // 自动检查更新
   AUTO_CHECK: true,
-
-  // 检查更新间隔（毫秒）
   CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
 
-  // GitHub相关URL
+  // 官方 OrionTV 固定來源
   ORIONTV_ORG_GITHUB_RAW_URL:
     `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
-  GITHUB_RAW_URL:
-    `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
-// 获取平台特定的下载URL
+
+  // IIFE：初始化時就生成字串
+  GITHUB_RAW_URL: (() => {
+    const user = process.env.USER_NAME!;
+    const repo = process.env.REPO_NAME!;
+    const branch = process.env.BRANCH_NAME!;
+    return `https://ghfast.top/https://raw.githubusercontent.com/${user}/${repo}/${branch}/package.json?t=${Date.now()}`;
+  })(),
+
+  // 動態生成 APK 下載 URL
   getDownloadUrl(version: string): string {
-    return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}.apk`;
+    const user = process.env.USER_NAME!;
+    const repo = process.env.REPO_NAME!;
+    const branch = process.env.BRANCH_NAME!;
+    const safeBranch = branch.replace(/[^a-zA-Z0-9-_]/g, "-");
+
+    const suffix = (branch === "main" || branch === "master") ? "" : `-${safeBranch}`;
+
+    return `https://ghfast.top/https://github.com/${user}/${repo}/releases/download/v${version}${suffix}/orionTV.${version}${suffix}.apk`;
   },
 
-  // 是否显示更新日志
   SHOW_RELEASE_NOTES: true,
-
-  // 是否允许跳过版本
   ALLOW_SKIP_VERSION: true,
-
-  // 下载超时时间（毫秒）
-  DOWNLOAD_TIMEOUT: 10 * 60 * 1000, // 10分钟
-
-  // 是否在WIFI下自动下载
+  DOWNLOAD_TIMEOUT: 10 * 60 * 1000,
   AUTO_DOWNLOAD_ON_WIFI: false,
 
-  // 更新通知设置
   NOTIFICATION: {
     ENABLED: true,
     TITLE: "OrionTV 更新",

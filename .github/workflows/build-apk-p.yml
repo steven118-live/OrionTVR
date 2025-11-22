@@ -3,10 +3,7 @@ name: Build Android APK Personal
 on:
   push:
     branches:
-      - master
-      - main
-      - dev
-      - "*"        # 其它分支也能觸發
+      - "*"        # 任意分支都能觸發
     tags-ignore:   # 忽略所有 tag push
       - '**'
   workflow_dispatch:
@@ -23,12 +20,12 @@ on:
           - full
           - incremental
       buildTarget:
-        description: "建置來源 (dev / tag)"
+        description: "建置來源 (branch / tag)"
         required: true
-        default: "tag"
+        default: "branch"
         type: choice
         options:
-          - dev
+          - branch
           - tag
 
 permissions:
@@ -37,6 +34,12 @@ permissions:
 jobs:
   release_build:
     runs-on: ubuntu-latest
+
+    env:
+      USER_NAME: ${{ github.repository_owner }}
+      REPO_NAME: ${{ github.event.repository.name }}
+      BRANCH_NAME: ${{ github.ref_name }}
+      GITHUB_RAW_URL: https://ghfast.top/https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.ref_name }}/package.json?t=${{ github.run_id }}
 
     steps:
       - name: Validate inputs for tag builds
@@ -56,7 +59,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'push' && github.ref || (github.event.inputs.buildTarget == 'dev' && 'dev' || format('refs/tags/v{0}', github.event.inputs.custom_version)) }}
+          ref: ${{ github.ref }}
+
+      - name: Show dynamic RAW URL
+        run: |
+          echo "Repo: $USER_NAME/$REPO_NAME"
+          echo "Branch: $BRANCH_NAME"
+          echo "RAW URL: $GITHUB_RAW_URL"
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -110,33 +119,32 @@ jobs:
             yarn build
           fi
 
-      - name: Rename APK file with version (branch/tag aligned)
+      - name: Rename APK file with version (branch aligned)
         id: rename-apk
         run: |
           mkdir -p artifacts
           VERSION="${{ steps.package-version.outputs.version }}"
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
-            FINAL_VERSION="${VERSION}-dev"
-          elif [ "${{ github.event.inputs.buildTarget }}" = "dev" ]; then
-            FINAL_VERSION="${VERSION}-dev"
-          else
+          BRANCH="${BRANCH_NAME//\//-}"   # 把斜線轉成 -
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
             FINAL_VERSION="${VERSION}"
+          else
+            FINAL_VERSION="${VERSION}-${BRANCH}"
           fi
-          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/${FINAL_VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/orionTV.${FINAL_VERSION}.apk"
           echo "apk_version=${FINAL_VERSION}" >> $GITHUB_OUTPUT
-          echo "APK prepared: artifacts/${FINAL_VERSION}.apk"
+          echo "APK prepared: artifacts/orionTV.${FINAL_VERSION}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.rename-apk.outputs.apk_version }}
-          path: artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk
+          path: artifacts/orionTV.${{ steps.rename-apk.outputs.apk_version }}.apk
           retention-days: 7
 
       - name: Check APK version info
         run: |
           sudo apt-get update && sudo apt-get install -y aapt
-          aapt dump badging "artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk" | grep version
+          aapt dump badging "artifacts/orionTV.${{ steps.rename-apk.outputs.apk_version }}.apk" | grep version
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
@@ -145,12 +153,11 @@ jobs:
           name: Release v${{ steps.rename-apk.outputs.apk_version }}
           body: |
             Automated release for version v${{ steps.rename-apk.outputs.apk_version }}.
-            Build target: ${{ github.event_name == 'push' && github.ref || github.event.inputs.buildTarget }}
-            Build mode: ${{ github.event.inputs.buildMode }}
+            Repo: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
             Commit: ${{ github.sha }}
-            This build includes the small version .xxx(001-999) suffix for personal/internal use.
           draft: false
           prerelease: false
-          files: artifacts/${{ steps.rename-apk.outputs.apk_version }}.apk
+          files: artifacts/orionTV.${{ steps.rename-apk.outputs.apk_version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
