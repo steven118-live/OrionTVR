@@ -36,7 +36,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # ������ 這些變數會被 UPDATE_CONFIG.ts 引用
       USER_NAME: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
       BRANCH_NAME: ${{ github.ref_name }}
@@ -109,7 +108,7 @@ jobs:
           echo "Updated build.gradle versionCode=${CODE}, versionName=${VERSION}"
 
       - name: Build TV APK
-        # ������ 關鍵修改：明確將環境變數導出給 yarn build，確保應用程式程式碼能讀取 process.env
+        # 💥 關鍵修改：明確將環境變數導出給 yarn build，確保應用程式程式碼能讀取 process.env
         run: |
           export USER_NAME=${{ env.USER_NAME }}
           export REPO_NAME=${{ env.REPO_NAME }}
