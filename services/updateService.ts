@@ -11,9 +11,9 @@ import { Platform } from 'react-native';
 const logger = Logger.withTag('UpdateService');
 
 interface VersionInfo {
-  version: string;               // 主要版本（例如 GitHub
+  version: string;               // GitHub 版本
   downloadUrl: string;
-  upstreamVersion?: string;      // 新增：oriontv.org 的版本
+  upstreamVersion?: string;      // oriontv.org 的版本
 }
 
 /**
@@ -30,9 +30,7 @@ class UpdateService {
     return UpdateService.instance;
   }
 
-  /** --------------------------------------------------------------
-   *  1️⃣ 远程版本检查（保持不变，只是把 fetch 包装成 async/await）
-   * --------------------------------------------------------------- */
+  /** 1️⃣ 遠端版本檢查 */
   async checkVersion(): Promise<VersionInfo> {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -44,11 +42,14 @@ class UpdateService {
           fetch(UPDATE_CONFIG.ORIONTV_ORG_GITHUB_RAW_URL, { signal: controller.signal }),
         ]);
         clearTimeout(timeoutId);
+
         if (!responseGitHub.ok) {
           throw new Error(`GitHub HTTP ${responseGitHub.status}`);
         }
+
         const remotePackage = await responseGitHub.json();
         const remoteVersion = remotePackage.version as string;
+
         let upstreamVersion = '';
         if (responseUpstream.ok) {
           try {
@@ -57,7 +58,8 @@ class UpdateService {
           } catch (e) {
             logger.warn('解析 upstream 版本失敗', e);
           }
-      }
+        } // ✅ 正確閉合大括號
+
         return {
           version: remoteVersion,
           downloadUrl: UPDATE_CONFIG.getDownloadUrl(remoteVersion),
