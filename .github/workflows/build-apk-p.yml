@@ -3,7 +3,12 @@ name: Build Android APK Personal
 on:
   push:
     branches:
-      - dev        # ✅ 只有 dev 分支 push 會自動觸發
+      - master
+      - main
+      - dev
+      - "*"        # 其它分支也能觸發
+    tags-ignore:   # 🚫 忽略所有 tag push
+      - '**'
   workflow_dispatch:
     inputs:
       custom_version:
