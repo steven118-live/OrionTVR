@@ -39,7 +39,6 @@ jobs:
       USER_NAME: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
       BRANCH_NAME: ${{ github.ref_name }}
-      GITHUB_RAW_URL: https://ghfast.top/https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.ref_name }}/package.json?t=${{ github.run_id }}
 
     steps:
       - name: Validate inputs for tag builds
@@ -61,22 +60,17 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
-      - name: Show dynamic RAW URL and APK URL
+      - name: Generate BuildEnv.ts
         run: |
-          echo "Repo: $USER_NAME/$REPO_NAME"
-          echo "Branch: $BRANCH_NAME"
-          echo "RAW URL: $GITHUB_RAW_URL"
+          mkdir -p constants
+          echo "export const BUILD_ENV = {
+            USER_NAME: '${{ github.repository_owner }}',
+            REPO_NAME: '${{ github.event.repository.name }}',
+            BRANCH_NAME: '${{ github.ref_name }}'
+          };" > constants/BuildEnv.ts
 
-          VERSION=$(node -p "require('./package.json').version")
-          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g')
-          if [ "$BRANCH_NAME" = "main" ] || [ "$BRANCH_NAME" = "master" ]; then
-            SUFFIX=""
-          else
-            SUFFIX="-$SAFE_BRANCH"
-          fi
-
-          APK_URL="https://ghfast.top/https://github.com/$USER_NAME/$REPO_NAME/releases/download/v${VERSION}${SUFFIX}/orionTV.${VERSION}${SUFFIX}.apk"
-          echo "APK URL: $APK_URL"
+      - name: Show BuildEnv
+        run: cat constants/BuildEnv.ts
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -158,7 +152,8 @@ jobs:
 
       - name: Check APK version info
         run: |
-          sudo apt-get update && sudo apt-get install -y aapt
+          sudo apt-get update
+          sudo apt-get install -y aapt || sudo apt-get install -y android-tools-aapt
           aapt dump badging "artifacts/orionTV.${{ steps.rename-apk.outputs.apk_version }}.apk" | grep version
 
       - name: Create Release and Upload APK

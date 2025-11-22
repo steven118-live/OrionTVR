@@ -1,24 +1,20 @@
-// UpdateService.ts
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
-// import * as Device from 'expo-device';
 import Toast from 'react-native-toast-message';
 import { version as currentVersion } from '../package.json';
 import { UPDATE_CONFIG } from '../constants/UpdateConfig';
+
 import Logger from '@/utils/Logger';
 import { Platform } from 'react-native';
 
 const logger = Logger.withTag('UpdateService');
 
 interface VersionInfo {
-  version: string;               // GitHub 版本
+  version: string;
   downloadUrl: string;
-  upstreamVersion?: string;      // oriontv.org 的版本
+  upstreamVersion?: string;
 }
 
-/**
- * 只在 Android 平台使用的常量（iOS 不会走到下载/安装流程）
- */
 const ANDROID_MIME_TYPE = 'application/vnd.android.package-archive';
 
 class UpdateService {
@@ -30,7 +26,6 @@ class UpdateService {
     return UpdateService.instance;
   }
 
-  /** 1️⃣ 遠端版本檢查 */
   async checkVersion(): Promise<VersionInfo> {
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -58,7 +53,7 @@ class UpdateService {
           } catch (e) {
             logger.warn('解析 upstream 版本失敗', e);
           }
-        } // ✅ 正確閉合大括號
+        }
 
         return {
           version: remoteVersion,
@@ -75,23 +70,17 @@ class UpdateService {
           });
           throw e;
         }
-        // 指数退避
         await new Promise(r => setTimeout(r, 2_000 * attempt));
       }
     }
-    // 这句永远走不到，仅为 TypeScript 报错
     throw new Error('Unexpected');
   }
 
-  /** --------------------------------------------------------------
-   *  2️⃣ 清理旧的 APK 文件（使用 expo-file-system 的 API）
-   * --------------------------------------------------------------- */
   private async cleanOldApkFiles(): Promise<void> {
     try {
-      const dirUri = FileSystem.documentDirectory; // e.g. file:///data/user/0/.../files/
-      if (!dirUri) {
-        throw new Error('Document directory is not available');
-      }
+      const dirUri = FileSystem.documentDirectory;
+      if (!dirUri) throw new Error('Document directory is not available');
+
       const listing = await FileSystem.readDirectoryAsync(dirUri);
       const apkFiles = listing.filter(name => name.startsWith('OrionTV_v') && name.endsWith('.apk'));
 
@@ -100,10 +89,10 @@ class UpdateService {
       const sorted = apkFiles.sort((a, b) => {
         const numA = parseInt(a.replace(/[^0-9]/g, ''), 10);
         const numB = parseInt(b.replace(/[^0-9]/g, ''), 10);
-        return numB - numA; // 倒序（最新在前）
+        return numB - numA;
       });
 
-      const stale = sorted.slice(2); // 保留最新的两个
+      const stale = sorted.slice(2);
       for (const file of stale) {
         const path = `${dirUri}${file}`;
         try {
@@ -118,13 +107,7 @@ class UpdateService {
     }
   }
 
-  /** --------------------------------------------------------------
-   *  3️⃣ 下载 APK（使用 expo-file-system 的下载 API）
-   * --------------------------------------------------------------- */
-  async downloadApk(
-    url: string,
-    onProgress?: (percent: number) => void,
-  ): Promise<string> {
+  async downloadApk(url: string, onProgress?: (percent: number) => void): Promise<string> {
     const maxRetries = 3;
     await this.cleanOldApkFiles();
 
@@ -134,14 +117,10 @@ class UpdateService {
         const fileName = `OrionTV_v${timestamp}.apk`;
         const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-        // expo-file-system 把下载进度回调参数统一为 `{totalBytesWritten, totalBytesExpectedToWrite}`
         const downloadResumable = FileSystem.createDownloadResumable(
           url,
           fileUri,
-          {
-            // Android 需要在 AndroidManifest 中声明 INTERNET、WRITE_EXTERNAL_STORAGE (API 33+ 使用 MANAGE_EXTERNAL_STORAGE)
-            // 这里不使用系统下载管理器，因为我们想自己控制进度回调。
-          },
+          {},
           progress => {
             if (onProgress && progress.totalBytesExpectedToWrite) {
               const percent = Math.floor(
@@ -169,7 +148,6 @@ class UpdateService {
           });
           throw e;
         }
-        // 指数退避
         await new Promise(r => setTimeout(r, 3_000 * attempt));
       }
     }
