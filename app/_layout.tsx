@@ -11,8 +11,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import LoginModal from "@/components/LoginModal";
 import useAuthStore from "@/stores/authStore";
-import { useUpdateStore } from "@/stores/updateStore";
-
+import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
 import { UpdateModal } from "@/components/UpdateModal";
 import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
@@ -34,10 +33,9 @@ export default function RootLayout() {
   const { loadSettings, remoteInputEnabled, apiBaseUrl } = useSettingsStore();
   const { startServer, stopServer } = useRemoteControlStore();
   const { checkLoginStatus } = useAuthStore();
-  const { checkForUpdate, lastCheckTime, initialize } = useUpdateStore(); // 确保引入 initialize
+  const { checkForUpdate, lastCheckTime } = useUpdateStore();
   const responsiveConfig = useResponsiveLayout();
-  
-  // 保持 useHomeStore 的类型转换不变
+  // const { refreshPlayRecords, initEpisodeSelection } = useHomeStore();
   const _home: any = useHomeStore();
   const refreshPlayRecords = _home.refreshPlayRecords as any;
   const initEpisodeSelection = _home.initEpisodeSelection as any;
@@ -46,15 +44,14 @@ export default function RootLayout() {
 
   const hasInitialized = useRef(false); // 初始化鎖
 
-  // 初始化設定 and UpdateStore
+  // 初始化設定
   useEffect(() => {
     const initializeApp = async () => {
       await loadSettings();
-      // 在此调用 initialize，确保 UpdateStore 的初始版本信息被设置
-      initialize(); 
     };
     initializeApp();
-  }, [loadSettings, initialize]); // 添加 initialize 依赖项
+    initUpdateStore(); // 初始化更新存储
+  }, [loadSettings]);
 
   // 檢查登入狀態
   useEffect(() => {
@@ -75,17 +72,14 @@ export default function RootLayout() {
 
   // API 驗證成功後才刷新最近播放 & 初始化選集 & 檢查更新
   useEffect(() => {
-    // 确保字体和API状态已准备好，且只运行一次
     if (!apiStatus.isValid || (!loaded && !error) || hasInitialized.current) return;
     hasInitialized.current = true;
 
     const updateTimer = setTimeout(() => {
-      // 检查更新逻辑
       if (loaded && UPDATE_CONFIG.AUTO_CHECK && Platform.OS === "android") {
         const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
         if (shouldCheck) {
-          // 修正点: 移除参数 (true)
-          checkForUpdate(); 
+          checkForUpdate(true);
         }
       }
 
@@ -94,6 +88,7 @@ export default function RootLayout() {
           await refreshPlayRecords();
         } catch (err) {
           logger.warn("播放紀錄刷新失敗", err);
+          // useHomeStore.getState().setPlayRecords([]); // fallback 空陣列，確保 UI 不空白
           (useHomeStore.getState() as any).setPlayRecords?.([]); // optional call
         } finally {
           initEpisodeSelection(); // 確保初始化選集，不受錯誤影響

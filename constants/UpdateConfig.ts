@@ -1,16 +1,20 @@
-// constants/UpdateConfig.ts
-// 這才是正確的內容！只有配置，沒有任何 JSX！
-
 export const UPDATE_CONFIG = {
+  // 自动检查更新
   AUTO_CHECK: true,
-  CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小時
+
+  // 检查更新间隔（毫秒）
+  CHECK_INTERVAL: 12 * 60 * 60 * 1000, // 12小时
+
   // GitHub相关URL
   ORIONTV_ORG_GITHUB_RAW_URL:
     `https://ghfast.top/https://raw.githubusercontent.com/orion-lib/OrionTV/refs/heads/master/package.json?t=${Date.now()}`,
   GITHUB_RAW_URL:
-    "https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json",
-  getDownloadUrl: (version: string): string =>
-    `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}.apk`,
+    `https://ghfast.top/https://raw.githubusercontent.com/steven118-live/OrionTVR/master/package.json?t=${Date.now()}`,
+// 获取平台特定的下载URL
+  getDownloadUrl(version: string): string {
+    return `https://ghfast.top/https://github.com/steven118-live/OrionTVR/releases/download/v${version}/orionTV.${version}.apk`;
+  },
+
   // 是否显示更新日志
   SHOW_RELEASE_NOTES: true,
 
@@ -22,15 +26,12 @@ export const UPDATE_CONFIG = {
 
   // 是否在WIFI下自动下载
   AUTO_DOWNLOAD_ON_WIFI: false,
- 
-  FORCE_UPDATE: false,
+
   // 更新通知设置
   NOTIFICATION: {
     ENABLED: true,
-    TITLE: "OrionTV 更新可用",
-    DOWNLOADING_TEXT: "正在下載新版本...",
-    DOWNLOAD_COMPLETE_TEXT: "下載完成，點擊安裝",
+    TITLE: "OrionTV 更新",
+    DOWNLOADING_TEXT: "正在下载新版本...",
+    DOWNLOAD_COMPLETE_TEXT: "下载完成，点击安装",
   },
-} as const;
-
-export type UpdateConfig = typeof UPDATE_CONFIG;
+};
