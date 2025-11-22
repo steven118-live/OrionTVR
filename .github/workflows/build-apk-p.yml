@@ -36,9 +36,6 @@ permissions:
 
 jobs:
   release_build:
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
-      (github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
@@ -59,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event_name == 'push' && 'dev' || (github.event.inputs.buildTarget == 'dev' && 'dev' || format('refs/tags/v{0}', github.event.inputs.custom_version)) }}
+          ref: ${{ github.event_name == 'push' && github.ref || (github.event.inputs.buildTarget == 'dev' && 'dev' || format('refs/tags/v{0}', github.event.inputs.custom_version)) }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -148,7 +145,7 @@ jobs:
           name: Release v${{ steps.rename-apk.outputs.apk_version }}
           body: |
             Automated release for version v${{ steps.rename-apk.outputs.apk_version }}.
-            Build target: ${{ github.event_name == 'push' && 'dev' || github.event.inputs.buildTarget }}
+            Build target: ${{ github.event_name == 'push' && github.ref || github.event.inputs.buildTarget }}
             Build mode: ${{ github.event.inputs.buildMode }}
             Commit: ${{ github.sha }}
             This build includes the small version .xxx(001-999) suffix for personal/internal use.
