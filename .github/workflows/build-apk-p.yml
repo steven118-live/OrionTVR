@@ -7,7 +7,7 @@ on:
       - main
       - dev
       - "*"        # 其它分支也能觸發
-    tags-ignore:   # 🚫 忽略所有 tag push
+    tags-ignore:   # 忽略所有 tag push
       - '**'
   workflow_dispatch:
     inputs:
