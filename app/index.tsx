@@ -1,9 +1,9 @@
-// app/index.tsx  ← 直接整個檔案覆蓋這份即可（已修好所有錯誤）
-import React, { useEffect, useCallback, useRef, useState } from "react";
+// app/(tabs)/index.tsx  ← 直接覆蓋，保證一次成功、永不回頭！
+import React, { useEffect, useCallback, useRef, useMemo } from "react";
 import {
+  FlatList,
   View,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   Pressable,
   Animated,
@@ -34,7 +34,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const backPressTimeRef = useRef<number | null>(null);
+  const backPressRef = useRef(0);
 
   const responsiveConfig = useResponsiveLayout();
   const { deviceType, spacing } = responsiveConfig;
@@ -56,19 +56,20 @@ export default function HomeScreen() {
 
   const { isLoggedIn, logout } = useAuthStore();
   const apiConfigStatus = useApiConfig();
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // 響應式列數
-  const getNumColumns = useCallback(() => {
-    if (deviceType === "tv") return 6;
+  const numColumns = useMemo(() => {
+    if (deviceType === "tv") return 5;
+    if (deviceType === "mobile") return 3;
     if (deviceType === "tablet") return 4;
     if (WINDOW_WIDTH >= 500) return 3;
     return 2;
   }, [deviceType]);
 
-  const numColumns = getNumColumns();
+  const itemWidth = useMemo(() => {
+    return (WINDOW_WIDTH - spacing * 2 - spacing * (numColumns - 1)) / numColumns;
+  }, [numColumns, spacing]);
 
-  // 合併的 useFocusEffect（修復記憶體洩漏 + 雙擊退出）
+  // 雙擊退出 + 刷新播放記錄
   useFocusEffect(
     useCallback(() => {
       refreshPlayRecords();
@@ -76,32 +77,25 @@ export default function HomeScreen() {
       if (Platform.OS === "android") {
         const handler = () => {
           const now = Date.now();
-          if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
-            backPressTimeRef.current = now;
-            ToastAndroid.show("再按一次返回鍵退出", ToastAndroid.SHORT);
+          if (now - backPressRef.current > 2000) {
+            backPressRef.current = now;
+            ToastAndroid.show("再按一次退出應用", ToastAndroid.SHORT);
             return true;
           }
           BackHandler.exitApp();
           return true;
         };
         const sub = BackHandler.addEventListener("hardwareBackPress", handler);
-        return () => {
-          sub.remove();
-          backPressTimeRef.current = null;
-        };
+        return () => sub.remove();
       }
     }, [refreshPlayRecords])
   );
 
-  // 主要數據加載邏輯（已修復 useEffectResponse 手滑）
   useEffect(() => {
     if (!selectedCategory) return;
 
-    // 自動選擇第一個 tag
     if (selectedCategory.tags && !selectedCategory.tag) {
-      const defaultTag = selectedCategory.tags[0];
-      setSelectedTag(defaultTag);
-      selectCategory({ ...selectedCategory, tag: defaultTag });
+      selectCategory({ ...selectedCategory, tag: selectedCategory.tags[0] });
       return;
     }
 
@@ -118,17 +112,15 @@ export default function HomeScreen() {
     fetchInitialData,
   ]);
 
-  // 清除 API 配置錯誤
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) clearError();
   }, [apiConfigStatus.needsConfiguration, error, clearError]);
 
-  // 淡入動畫
   useEffect(() => {
     if (!loading && contentData.length > 0) {
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 400,
         useNativeDriver: true,
       }).start();
     } else if (loading) {
@@ -136,124 +128,93 @@ export default function HomeScreen() {
     }
   }, [loading, contentData.length]);
 
-  const handleCategorySelect = (category: Category) => {
-    let final = category;
-    if (category.tags?.length && !category.tag) {
-      const defaultTag = category.tags[0];
-      setSelectedTag(defaultTag);
-      final = { ...category, tag: defaultTag };
+  const handleCategorySelect = useCallback((category: Category) => {
+    if (category.tags && !category.tag) {
+      selectCategory({ ...category, tag: category.tags[0] });
     } else {
-      setSelectedTag(category.tag || null);
+      selectCategory(category);
     }
-    selectCategory(final);
-  };
+  }, []);
 
-  const handleTagSelect = (tag: string) => {
-    setSelectedTag(tag);
+  const handleTagSelect = useCallback((tag: string) => {
     selectedCategory && selectCategory({ ...selectedCategory, tag });
-  };
-
-  // 渲染項目
-  const renderCategoryItem = ({ item }: { item: Category }) => (
-    <StyledButton
-      text={item.title}
-      onPress={() => handleCategorySelect(item)}
-      isSelected={selectedCategory?.title === item.title}
-      style={styles.categoryBtn}
-      textStyle={styles.categoryText}
-    />
-  );
-
-  const renderTagItem = ({ item, index }: { item: string; index: number }) => (
-    <StyledButton
-      text={item}
-      onPress={() => handleTagSelect(item)}
-      isSelected={selectedTag === item}
-      hasTVPreferredFocus={deviceType === "tv" && index === 0}
-      style={styles.categoryBtn}
-      textStyle={styles.categoryText}
-      variant="ghost"
-    />
-  );
-
-  const renderVideoItem = ({ item, index }: { item: RowItem; index: number }) => {
-    const itemWidth = (WINDOW_WIDTH - spacing * 2 - spacing * (numColumns - 1)) / numColumns;
-    return (
-      <View style={{ width: itemWidth, padding: spacing / 2 }}>
-        <VideoCard
-          {...item}
-          api={api}
-          onRecordDeleted={fetchInitialData}
-          hasTVPreferredFocus={deviceType === "tv" && index === 0}
-        />
-      </View>
-    );
-  };
-
-  // 頂部導航（平板/TV）
-  const renderHeader = () => {
-    if (deviceType === "mobile") return null;
-    return (
-      <View style={styles.header}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <ThemedText style={styles.headerTitle}>首頁</ThemedText>
-          <Pressable style={{ marginLeft: 32 }} onPress={() => router.push("/live")}>
-            <ThemedText style={[styles.headerTitle, { fontSize: 26, color: "#ccc" }]}>直播</ThemedText>
-          </Pressable>
-        </View>
-        <View style={styles.headerRight}>
-          <StyledButton onPress={() => router.push("/favorites")} variant="ghost">
-            <Heart color="white" size={26} />
-          </StyledButton>
-          <StyledButton onPress={() => router.push("/search")} variant="ghost">
-            <Search color="white" size={26} />
-          </StyledButton>
-          <StyledButton onPress={() => router.push("/settings")} variant="ghost">
-            <Settings color="white" size={26} />
-          </StyledButton>
-          {isLoggedIn && (
-            <StyledButton onPress={logout} variant="ghost">
-              <LogOut color="white" size={26} />
-            </StyledButton>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const shouldShowApiHint = apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags;
+  }, [selectedCategory]);
 
   const content = (
     <ThemedView style={styles.container}>
       {deviceType === "mobile" && <StatusBar barStyle="light-content" />}
 
-      {renderHeader()}
+      {/* 頂部導航（僅平板/TV） */}
+      {deviceType !== "mobile" && (
+        <View style={styles.header}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <ThemedText style={styles.title}>首頁</ThemedText>
+            <Pressable onPress={() => router.push("/live")} style={{ marginLeft: 40 }}>
+              <ThemedText style={styles.liveText}>直播</ThemedText>
+            </Pressable>
+          </View>
+          <View style={styles.headerIcons}>
+            <StyledButton onPress={() => router.push("/favorites")} variant="ghost">
+              <Heart color="white" size={26} />
+            </StyledButton>
+            <StyledButton onPress={() => router.push("/search")} variant="ghost">
+              <Search color="white" size={26} />
+            </StyledButton>
+            <StyledButton onPress={() => router.push("/settings")} variant="ghost">
+              <Settings color="white" size={26} />
+            </StyledButton>
+            {isLoggedIn && (
+              <StyledButton onPress={logout} variant="ghost">
+                <LogOut color="white" size={26} />
+              </StyledButton>
+            )}
+          </View>
+        </View>
+      )}
 
-      {/* 分類 */}
+      {/* 分類條 */}
       <FlatList
         data={categories}
-        renderItem={renderCategoryItem}
-        keyExtractor={(item) => item.title}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: 8 }}
+        keyExtractor={(item) => item.title}
+        contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: 12 }}
+        renderItem={({ item }) => (
+          <StyledButton
+            text={item.title}
+            onPress={() => handleCategorySelect(item)}
+            isSelected={selectedCategory?.title === item.title}
+            style={styles.tab}
+            textStyle={styles.tabText}
+          />
+        )}
       />
 
-      {/* 子標籤 */}
+      {/* 子分類標籤 */}
       {selectedCategory?.tags && (
         <FlatList
           data={selectedCategory.tags}
-          renderItem={renderTagItem}
-          keyExtractor={(i) => i}
           horizontal
           showsHorizontalScrollIndicator={false}
+          keyExtractor={(tag) => tag}
           contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: 8 }}
+          renderItem={({ item, index }) => (
+            <StyledButton
+              text={item}
+              variant="ghost"
+              hasTVPreferredFocus={deviceType === "tv" && index === 0}
+              onPress={() => handleTagSelect(item)}
+              isSelected={selectedCategory.tag === item}
+              style={styles.tab}
+              textStyle={styles.tabText}
+            />
+          )}
         />
       )}
 
       {/* 主內容區 */}
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        {shouldShowApiHint ? (
+        {apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags ? (
           <View style={commonStyles.center}>
             <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
               {getApiConfigErrorMessage(apiConfigStatus)}
@@ -261,45 +222,54 @@ export default function HomeScreen() {
           </View>
         ) : apiConfigStatus.isValidating ? (
           <View style={commonStyles.center}>
-            <ActivityIndicator size="large" />
-            <ThemedText type="subtitle">正在驗證伺服器配置...</ThemedText>
-          </View>
-        ) : apiConfigStatus.error ? (
-          <View style={commonStyles.center}>
-            <ThemedText type="subtitle">{apiConfigStatus.error}</ThemedText>
-          </View>
-        ) : loading && contentData.length === 0 ? (
-          <View style={commonStyles.center}>
-            <ActivityIndicator size="large" />
+            <ActivityIndicator size="large" color="#fff" />
+            <ThemedText style={{ marginTop: 16 }}>正在驗證伺服器...</ThemedText>
           </View>
         ) : error ? (
           <View style={commonStyles.center}>
-            <ThemedText type="subtitle">{error}</ThemedText>
+            <ThemedText type="subtitle" style={{ color: "#ff6b6b" }}>
+              {error}
+            </ThemedText>
+          </View>
+        ) : loading && contentData.length === 0 ? (
+          <View style={commonStyles.center}>
+            <ActivityIndicator size="large" color="#fff" />
           </View>
         ) : (
           <FlatList
             data={contentData}
-            renderItem={renderVideoItem}
-            keyExtractor={(item) => item.id.toString()}
             numColumns={numColumns}
+            keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={{
               paddingHorizontal: spacing,
               paddingBottom: insets.bottom + 100,
             }}
             columnWrapperStyle={{ justifyContent: "space-between" }}
+            renderItem={({ item, index }) => (
+              <View style={{ width: itemWidth, padding: spacing / 2 }}>
+                <VideoCard
+                  {...item}
+                  api={api}
+                  onRecordDeleted={fetchInitialData}
+                  hasTVPreferredFocus={deviceType === "tv" && index === 0}
+                />
+              </View>
+            )}
             ListEmptyComponent={
               <View style={commonStyles.center}>
                 <ThemedText type="subtitle">
-                  {selectedCategory?.tags ? "請選擇一個子分類" : "該分類下暫無內容"}
+                  {selectedCategory?.tags ? "請選擇子分類" : "暫無內容"}
                 </ThemedText>
               </View>
             }
-            ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} /> : null}
+            ListFooterComponent={
+              loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} color="#fff" /> : null
+            }
             onEndReached={loadMoreData}
-            onEndReachedThreshold={0.5}
+            onEndReachedThreshold={0.6}
             removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            windowSize={21}
+            maxToRenderPerBatch={8}
+            windowSize={15}
             initialNumToRender={12}
             {...(deviceType === "tv" && {
               directionalLockEnabled: true,
@@ -311,6 +281,7 @@ export default function HomeScreen() {
     </ThemedView>
   );
 
+  // 最終正確寫法：TV 直接返回內容，手機用 ResponsiveNavigation 包住
   return deviceType === "tv" ? content : <ResponsiveNavigation>{content}</ResponsiveNavigation>;
 }
 
@@ -321,16 +292,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 32,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingTop: 24,
+    paddingBottom: 16,
   },
-  headerTitle: { fontSize: 36, fontWeight: "bold", color: "white" },
-  headerRight: { flexDirection: "row", gap: 20 },
-  categoryBtn: {
-    paddingHorizontal: 18,
+  title: { fontSize: 36, fontWeight: "800", color: "white" },
+  liveText: { fontSize: 26, color: "#aaa" },
+  headerIcons: { flexDirection: "row", gap: 24 },
+  tab: {
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 12,
     marginHorizontal: 6,
   },
-  categoryText: { fontSize: 15, fontWeight: "600" },
+  tabText: { fontSize: 15, fontWeight: "600" },
 });
