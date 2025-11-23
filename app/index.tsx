@@ -58,15 +58,22 @@ export default function HomeScreen() {
   const { isLoggedIn, logout } = useAuthStore();
   const apiConfigStatus = useApiConfig();
 
-  // 強制 TV 5 列 + 手機 3 列
   const isTV = Platform.isTV || deviceType === "tv" || WINDOW_WIDTH >= 900;
-  const numColumns = isTV ? 5 : 3;
+  const numColumns = isTV ? 6 : 3;   // ← 6 列！
 
-  // 整數寬度（最順）
-  const itemWidth = useMemo(() => {
-    const padding = isTV ? 80 : spacing * 4;
-    return Math.floor((WINDOW_WIDTH - padding) / numColumns);
-  }, [isTV, numColumns, spacing]);
+  // 6 列完美 gap 計算
+  const { itemWidth, gap } = useMemo(() => {
+    if (isTV) {
+      const totalGap = 5 * 20; // ← 這裡改數字就可調整卡片大小（20=平衡，12=更大，28=更小）
+      const available = WINDOW_WIDTH - 80 - totalGap;
+      const width = Math.floor(available / 6);
+      return { itemWidth: width, gap: 20 };
+    } else {
+      const phoneWidth = Math.floor((WINDOW_WIDTH - spacing * 4) / 3);
+      const phoneGap = Math.floor((WINDOW_WIDTH - phoneWidth * 3) / 2);
+      return { itemWidth: phoneWidth, gap: phoneGap > 12 ? phoneGap : 16 };
+    }
+  }, [isTV, spacing]);
 
   // 回到頂部相關
   const flatListRef = useRef<FlatList>(null);
@@ -79,15 +86,15 @@ export default function HomeScreen() {
 
   const handleScroll = (event: any) => {
     const offsetY = event.nativeEvent.contentOffset.y;
-    if (offsetY > 1000) {
+    if (offsetY > 1200) {
       setShowBackToTop(true);
       hasScrolled.current = true;
-    } else if (offsetY < 500) {
+    } else if (offsetY < 400) {
       setShowBackToTop(false);
     }
   };
 
-  // TV 按返回鍵回到頂部
+  // TV 返回鍵回到頂部
   useFocusEffect(
     useCallback(() => {
       if (!isTV) return;
@@ -123,7 +130,22 @@ export default function HomeScreen() {
     }, [refreshPlayRecords])
   );
 
-  // 其他 useEffect 不變...
+  // 必要的兩個函數（之前漏掉的）
+  const handleCategorySelect = useCallback((category: Category) => {
+    if (category.tags && !category.tag) {
+      selectCategory({ ...category, tag: category.tags[0] });
+    } else {
+      selectCategory(category);
+    }
+  }, [selectCategory]);
+
+  const handleTagSelect = useCallback((tag: string) => {
+    if (selectedCategory) {
+      selectCategory({ ...selectedCategory, tag });
+    }
+  }, [selectedCategory, selectCategory]);
+
+  // 其他 useEffect（資料載入）
   useEffect(() => {
     if (!selectedCategory) return;
     if (selectedCategory.tags && !selectedCategory.tag) {
@@ -145,38 +167,10 @@ export default function HomeScreen() {
     } else if (loading) fadeAnim.setValue(0);
   }, [loading, contentData.length]);
 
-  const handleCategorySelect = useCallback((category: Category) => {
-    if (category.tags && !category.tag) {
-      selectCategory({ ...category, tag: category.tags[0] });
-    } else {
-      selectCategory(category);
-    }
-  }, []);
-
-  const handleTagSelect = useCallback((tag: string) => {
-    selectedCategory && selectCategory({ ...selectedCategory, tag });
-  }, [selectedCategory]);
-
   const content = (
     <ThemedView style={styles.container}>
-      {deviceType === "mobile" && <StatusBar barStyle="light-content" />}
-
-      {deviceType !== "mobile" && !isTV && (
-        <View style={styles.header}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <ThemedText style={styles.title}>首頁</ThemedText>
-            <Pressable onPress={() => router.push("/live")} style={{ marginLeft: 40 }}>
-              <ThemedText style={styles.liveText}>直播</ThemedText>
-            </Pressable>
-          </View>
-          <View style={styles.headerIcons}>
-            <StyledButton onPress={() => router.push("/favorites")} variant="ghost"><Heart color="white" size={26} /></StyledButton>
-            <StyledButton onPress={() => router.push("/search")} variant="ghost"><Search color="white" size={26} /></StyledButton>
-            <StyledButton onPress={() => router.push("/settings")} variant="ghost"><Settings color="white" size={26} /></StyledButton>
-            {isLoggedIn && <StyledButton onPress={logout} variant="ghost"><LogOut color="white" size={26} /></StyledButton>}
-          </View>
-        </View>
-      )}
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <View style={{ height: insets.top + (isTV ? 40 : 10) }} />
 
       {/* 分類條 */}
       <FlatList
@@ -184,14 +178,14 @@ export default function HomeScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.title}
-        contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: 16 }}
+        contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: isTV ? 28 : 18 }}
         renderItem={({ item }) => (
           <StyledButton
             text={item.title}
             onPress={() => handleCategorySelect(item)}
             isSelected={selectedCategory?.title === item.title}
-            style={[styles.tab, isTV && { paddingVertical: 18, minHeight: 60 }]}
-            textStyle={[styles.tabText, isTV && { fontSize: 23, fontWeight: "800" }]}
+            style={[styles.tab, isTV && styles.tabTV]}
+            textStyle={[styles.tabText, isTV && styles.tabTextTV]}
           />
         )}
       />
@@ -203,7 +197,7 @@ export default function HomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           keyExtractor={(tag) => tag}
-          contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: 12 }}
+          contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: isTV ? 22 : 14 }}
           renderItem={({ item, index }) => (
             <StyledButton
               text={item}
@@ -211,8 +205,8 @@ export default function HomeScreen() {
               hasTVPreferredFocus={isTV && index === 0}
               onPress={() => handleTagSelect(item)}
               isSelected={selectedCategory.tag === item}
-              style={[styles.tab, isTV && { paddingVertical: 16 }]}
-              textStyle={[styles.tabText, isTV && { fontSize: 21 }]}
+              style={[styles.tab, isTV && styles.subTabTV]}
+              textStyle={[styles.tabText, isTV && styles.subTabTextTV]}
             />
           )}
         />
@@ -220,24 +214,13 @@ export default function HomeScreen() {
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         {apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags ? (
-          <View style={commonStyles.center}>
-            <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
-              {getApiConfigErrorMessage(apiConfigStatus)}
-            </ThemedText>
-          </View>
+          <View style={commonStyles.center}><ThemedText type="subtitle">{getApiConfigErrorMessage(apiConfigStatus)}</ThemedText></View>
         ) : apiConfigStatus.isValidating ? (
-          <View style={commonStyles.center}>
-            <ActivityIndicator size="large" color="#fff" />
-            <ThemedText style={{ marginTop: 16 }}>正在驗證伺服器...</ThemedText>
-          </View>
+          <View style={commonStyles.center}><ActivityIndicator size="large" color="#fff" /><ThemedText>正在驗證伺服器...</ThemedText></View>
         ) : error ? (
-          <View style={commonStyles.center}>
-            <ThemedText type="subtitle" style={{ color: "#ff6b6b" }}>{error}</ThemedText>
-          </View>
+          <View style={commonStyles.center}><ThemedText type="subtitle" style={{ color: "#ff6b6b" }}>{error}</ThemedText></View>
         ) : loading && contentData.length === 0 ? (
-          <View style={commonStyles.center}>
-            <ActivityIndicator size="large" color="#fff" />
-          </View>
+          <View style={commonStyles.center}><ActivityIndicator size="large" color="#fff" /></View>
         ) : (
           <>
             <FlatList
@@ -249,11 +232,15 @@ export default function HomeScreen() {
               keyExtractor={(item) => item.id.toString()}
               contentContainerStyle={{
                 paddingHorizontal: isTV ? 40 : spacing,
-                paddingBottom: insets.bottom + 120,
+                paddingTop: 10,
+                paddingBottom: insets.bottom + 140,
               }}
-              columnWrapperStyle={{ justifyContent: "space-between" }}
+              columnWrapperStyle={{
+                justifyContent: "space-between",
+                paddingHorizontal: isTV ? gap / 2 : 0,
+              }}
               renderItem={({ item, index }) => (
-                <View style={{ width: itemWidth }}>
+                <View style={{ width: itemWidth, marginHorizontal: isTV ? gap / 2 : 0 }}>
                   <VideoCard
                     {...item}
                     api={api}
@@ -262,33 +249,29 @@ export default function HomeScreen() {
                   />
                 </View>
               )}
-              ListEmptyComponent={
-                <View style={commonStyles.center}>
-                  <ThemedText type="subtitle">
-                    {selectedCategory?.tags ? "請選擇子分類" : "暫無內容"}
-                  </ThemedText>
-                </View>
-              }
+              ListEmptyComponent={<View style={commonStyles.center}><ThemedText type="subtitle">暫無內容</ThemedText></View>}
               ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} color="#fff" /> : null}
               onEndReached={loadMoreData}
               onEndReachedThreshold={0.6}
-              
-              // 關鍵四行：保護全站播放紀錄 + 保持超順！
-              removeClippedSubviews={false}
-              maxToRenderPerBatch={50}
-              windowSize={101}
-              initialNumToRender={50}
 
-              {...(isTV && {
-                directionalLockEnabled: true,
-                overScrollMode: "never",
+              // 6 列最順參數
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={18}
+              windowSize={21}
+              initialNumToRender={24}
+              getItemLayout={(data, index) => ({
+                length: itemWidth * (9 / 16) + 90,
+                offset: (itemWidth * (9 / 16) + 90) * index,
+                index,
               })}
+
+              {...(isTV && { directionalLockEnabled: true, overScrollMode: "never" })}
             />
 
-            {/* 手機/平板回到頂部按鈕 */}
+            {/* 手機回到頂部 */}
             {!isTV && showBackToTop && (
-              <Pressable onPress={scrollToTop} style={styles.backToTopButton}>
-                <Text style={{ color: "white", fontSize: 32, lineHeight: 36 }}>Up Arrow</Text>
+              <Pressable onPress={scrollToTop} style={styles.backToTop}>
+                <Text style={{ color: "white", fontSize: 34 }}>Up Arrow</Text>
               </Pressable>
             )}
           </>
@@ -301,42 +284,23 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 32,
-    paddingTop: 24,
-    paddingBottom: 16,
-  },
-  title: { fontSize: 36, fontWeight: "800", color: "white" },
-  liveText: { fontSize: 26, color: "#aaa" },
-  headerIcons: { flexDirection: "row", gap: 24 },
-  tab: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginHorizontal: 8,
-  },
-  tabText: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  backToTopButton: {
+  container: { flex: 1, backgroundColor: "#000" },
+  tab: { paddingHorizontal: 26, paddingVertical: 16, borderRadius: 14, marginHorizontal: 9, minHeight: 56 },
+  tabTV: { paddingVertical: 28, paddingHorizontal: 40, minHeight: 84 },
+  tabText: { fontSize: 18, fontWeight: "600", lineHeight: 26 },
+  tabTextTV: { fontSize: 28, fontWeight: "800", lineHeight: 38 },
+  subTabTV: { paddingVertical: 24, minHeight: 74 },
+  subTabTextTV: { fontSize: 25, fontWeight: "700" },
+  backToTop: {
     position: "absolute",
     right: 20,
-    bottom: 90,
+    bottom: 100,
     backgroundColor: "#00C4FF",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    elevation: 12,
   },
 });
