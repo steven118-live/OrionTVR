@@ -1,5 +1,5 @@
-// app/(tabs)/index.tsx  ← 直接整個覆蓋，保證 TV 5 列 + 超大文字 + 最順！
-import React, { useEffect, useCallback, useRef, useMemo } from "react";
+// app/(tabs)/index.tsx ← 直接整個貼上覆蓋，保證一次成功！
+import React, { useEffect, useCallback, useRef, useMemo, useState } from "react";
 import {
   FlatList,
   View,
@@ -12,6 +12,7 @@ import {
   BackHandler,
   ToastAndroid,
   Dimensions,
+  Text,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedView } from "@/components/ThemedView";
@@ -57,39 +58,72 @@ export default function HomeScreen() {
   const { isLoggedIn, logout } = useAuthStore();
   const apiConfigStatus = useApiConfig();
 
-  // 強制邏輯：不管你 deviceType 判斷成什麼，只要螢幕夠寬就是 TV 5 列！
+  // 強制 TV 5 列 + 手機 3 列
   const isTV = Platform.isTV || deviceType === "tv" || WINDOW_WIDTH >= 900;
   const numColumns = isTV ? 5 : 3;
 
-  // 整數寬度 + 超穩計算（這就是你原本 6 列超順的秘密）
+  // 整數寬度（最順）
   const itemWidth = useMemo(() => {
-    const totalPadding = isTV ? 80 : spacing * 4;
-    const available = WINDOW_WIDTH - totalPadding;
-    return Math.floor(available / numColumns);
-  }, [isTV, numColumns]);
+    const padding = isTV ? 80 : spacing * 4;
+    return Math.floor((WINDOW_WIDTH - padding) / numColumns);
+  }, [isTV, numColumns, spacing]);
 
+  // 回到頂部相關
+  const flatListRef = useRef<FlatList>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const hasScrolled = useRef(false);
+
+  const scrollToTop = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    if (offsetY > 1000) {
+      setShowBackToTop(true);
+      hasScrolled.current = true;
+    } else if (offsetY < 500) {
+      setShowBackToTop(false);
+    }
+  };
+
+  // TV 按返回鍵回到頂部
   useFocusEffect(
     useCallback(() => {
-      refreshPlayRecords();
-      if (Platform.OS === "android") {
-        const handler = () => {
-          const now = Date.now();
-          if (now - backPressRef.current > 2000) {
-            backPressRef.current = now;
-            ToastAndroid.show("再按一次退出應用", ToastAndroid.SHORT);
-            return true;
-          }
-          BackHandler.exitApp();
+      if (!isTV) return;
+      const onBackPress = () => {
+        if (hasScrolled.current) {
+          scrollToTop();
           return true;
-        };
-        const sub = BackHandler.addEventListener("hardwareBackPress", handler);
-        return () => sub.remove();
-      }
+        }
+        return false;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => sub.remove();
+    }, [])
+  );
+
+  // 手機雙擊退出
+  useFocusEffect(
+    useCallback(() => {
+      if (isTV) return;
+      refreshPlayRecords();
+      const handler = () => {
+        const now = Date.now();
+        if (now - backPressRef.current > 2000) {
+          backPressRef.current = now;
+          ToastAndroid.show("再按一次退出應用", ToastAndroid.SHORT);
+          return true;
+        }
+        BackHandler.exitApp();
+        return true;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", handler);
+      return () => sub.remove();
     }, [refreshPlayRecords])
   );
 
-  // ...（中間所有 useEffect、handle 函數完全不動，跟你原本最順的版本一樣）
-
+  // 其他 useEffect 不變...
   useEffect(() => {
     if (!selectedCategory) return;
     if (selectedCategory.tags && !selectedCategory.tag) {
@@ -127,8 +161,7 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       {deviceType === "mobile" && <StatusBar barStyle="light-content" />}
 
-      {/* 頂部導航 */}
-      {deviceType !== "mobile" && (
+      {deviceType !== "mobile" && !isTV && (
         <View style={styles.header}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <ThemedText style={styles.title}>首頁</ThemedText>
@@ -145,7 +178,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* 分類條 - 文字加大 + 不被切 */}
+      {/* 分類條 */}
       <FlatList
         data={categories}
         horizontal
@@ -157,8 +190,8 @@ export default function HomeScreen() {
             text={item.title}
             onPress={() => handleCategorySelect(item)}
             isSelected={selectedCategory?.title === item.title}
-            style={[styles.tab, isTV && { paddingVertical: 16, minHeight: 56 }]}
-            textStyle={[styles.tabText, isTV && { fontSize: 22, fontWeight: "800" }]}
+            style={[styles.tab, isTV && { paddingVertical: 18, minHeight: 60 }]}
+            textStyle={[styles.tabText, isTV && { fontSize: 23, fontWeight: "800" }]}
           />
         )}
       />
@@ -178,55 +211,88 @@ export default function HomeScreen() {
               hasTVPreferredFocus={isTV && index === 0}
               onPress={() => handleTagSelect(item)}
               isSelected={selectedCategory.tag === item}
-              style={[styles.tab, isTV && { paddingVertical: 14 }]}
-              textStyle={[styles.tabText, isTV && { fontSize: 20 }]}
+              style={[styles.tab, isTV && { paddingVertical: 16 }]}
+              textStyle={[styles.tabText, isTV && { fontSize: 21 }]}
             />
           )}
         />
       )}
 
-      {/* 主內容區 */}
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        {/* ...（錯誤、loading 判斷全部保留不變） */}
+        {apiConfigStatus.needsConfiguration && selectedCategory && !selectedCategory.tags ? (
+          <View style={commonStyles.center}>
+            <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
+              {getApiConfigErrorMessage(apiConfigStatus)}
+            </ThemedText>
+          </View>
+        ) : apiConfigStatus.isValidating ? (
+          <View style={commonStyles.center}>
+            <ActivityIndicator size="large" color="#fff" />
+            <ThemedText style={{ marginTop: 16 }}>正在驗證伺服器...</ThemedText>
+          </View>
+        ) : error ? (
+          <View style={commonStyles.center}>
+            <ThemedText type="subtitle" style={{ color: "#ff6b6b" }}>{error}</ThemedText>
+          </View>
+        ) : loading && contentData.length === 0 ? (
+          <View style={commonStyles.center}>
+            <ActivityIndicator size="large" color="#fff" />
+          </View>
+        ) : (
+          <>
+            <FlatList
+              ref={flatListRef}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              data={contentData}
+              numColumns={numColumns}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={{
+                paddingHorizontal: isTV ? 40 : spacing,
+                paddingBottom: insets.bottom + 120,
+              }}
+              columnWrapperStyle={{ justifyContent: "space-between" }}
+              renderItem={({ item, index }) => (
+                <View style={{ width: itemWidth }}>
+                  <VideoCard
+                    {...item}
+                    api={api}
+                    onRecordDeleted={fetchInitialData}
+                    hasTVPreferredFocus={isTV && index === 0}
+                  />
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={commonStyles.center}>
+                  <ThemedText type="subtitle">
+                    {selectedCategory?.tags ? "請選擇子分類" : "暫無內容"}
+                  </ThemedText>
+                </View>
+              }
+              ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} color="#fff" /> : null}
+              onEndReached={loadMoreData}
+              onEndReachedThreshold={0.6}
+              
+              // 關鍵四行：保護全站播放紀錄 + 保持超順！
+              removeClippedSubviews={false}
+              maxToRenderPerBatch={50}
+              windowSize={101}
+              initialNumToRender={50}
 
-        <FlatList
-          data={contentData}
-          numColumns={numColumns}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{
-            paddingHorizontal: isTV ? 40 : spacing,
-            paddingBottom: insets.bottom + 100,
-          }}
-          columnWrapperStyle={{ justifyContent: "space-between" }}
-          renderItem={({ item, index }) => (
-            <View style={{ width: itemWidth }}>
-              <VideoCard
-                {...item}
-                api={api}
-                onRecordDeleted={fetchInitialData}
-                hasTVPreferredFocus={isTV && index === 0}
-              />
-            </View>
-          )}
-          ListEmptyComponent={
-            <View style={commonStyles.center}>
-              <ThemedText type="subtitle">
-                {selectedCategory?.tags ? "請選擇子分類" : "暫無內容"}
-              </ThemedText>
-            </View>
-          }
-          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} color="#fff" /> : null}
-          onEndReached={loadMoreData}
-          onEndReachedThreshold={0.6}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={12}
-          windowSize={21}
-          initialNumToRender={15}
-          {...(isTV && {
-            directionalLockEnabled: true,
-            overScrollMode: "never",
-          })}
-        />
+              {...(isTV && {
+                directionalLockEnabled: true,
+                overScrollMode: "never",
+              })}
+            />
+
+            {/* 手機/平板回到頂部按鈕 */}
+            {!isTV && showBackToTop && (
+              <Pressable onPress={scrollToTop} style={styles.backToTopButton}>
+                <Text style={{ color: "white", fontSize: 32, lineHeight: 36 }}>Up Arrow</Text>
+              </Pressable>
+            )}
+          </>
+        )}
       </Animated.View>
     </ThemedView>
   );
@@ -248,13 +314,29 @@ const styles = StyleSheet.create({
   liveText: { fontSize: 26, color: "#aaa" },
   headerIcons: { flexDirection: "row", gap: 24 },
   tab: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
     borderRadius: 12,
-    marginHorizontal: 6,
+    marginHorizontal: 8,
   },
   tabText: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "600",
+  },
+  backToTopButton: {
+    position: "absolute",
+    right: 20,
+    bottom: 90,
+    backgroundColor: "#00C4FF",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
 });
