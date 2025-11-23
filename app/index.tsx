@@ -35,7 +35,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const backPressRef = useRef(0);
+  const backPressTimeRef = useRef<number | null>(null);
 
   const responsiveConfig = useResponsiveLayout();
   const { deviceType, spacing } = responsiveConfig;
@@ -59,7 +59,7 @@ export default function HomeScreen() {
   const apiConfigStatus = useApiConfig();
 
   const isTV = Platform.isTV || deviceType === "tv" || WINDOW_WIDTH >= 900;
-  const numColumns = isTV ? 6 : 3;   // 6 列，保證順！
+  const numColumns = isTV ? 5 : 3;   // 6 列，保證順！
 
   // 6 列 + 卡片變小 + 有漂亮間距（不會重疊）
   const { itemWidth, gap } = useMemo(() => {
@@ -113,40 +113,64 @@ export default function HomeScreen() {
     useCallback(() => {
       if (isTV) return;
       refreshPlayRecords();
-      const handler = () => {
-        const now = Date.now();
-        if (now - backPressRef.current > 2000) {
-          backPressRef.current = now;
-          ToastAndroid.show("再按一次退出應用", ToastAndroid.SHORT);
+      if (Platform.OS === "android") {
+        const handler = () => {
+          const now = Date.now();
+          if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
+            backPressTimeRef.current = now;
+            ToastAndroid.show("再按一次返回鍵退出", ToastAndroid.SHORT);
+            return true;
+          }
+          BackHandler.exitApp();
           return true;
-        }
-        BackHandler.exitApp();
-        return true;
-      };
-      const sub = BackHandler.addEventListener("hardwareBackPress", handler);
-      return () => sub.remove();
+        };
+        const sub = BackHandler.addEventListener("hardwareBackPress", handler);
+        return () => {
+          sub.remove();
+          backPressTimeRef.current = null;
+        };
+      }
     }, [refreshPlayRecords])
   );
 
+  // 主要數據加載邏輯（已修復 useEffectResponse 手滑）
   useEffect(() => {
     if (!selectedCategory) return;
     if (selectedCategory.tags && !selectedCategory.tag) {
-      selectCategory({ ...selectedCategory, tag: selectedCategory.tags[0] });
+      const defaultTag = selectedCategory.tags[0];
+      selectCategory({ ...selectedCategory, tag: defaultTag });
       return;
     }
-    if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
-      if (!selectedCategory.tags || selectedCategory.tag) fetchInitialData();
-    }
-  }, [selectedCategory, selectedCategory?.tag, apiConfigStatus.isConfigured, apiConfigStatus.needsConfiguration, fetchInitialData]);
 
+    if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
+      if (!selectedCategory.tags || selectedCategory.tag) {
+        fetchInitialData();
+      }
+    }
+  }, [
+    selectedCategory,
+    selectedCategory?.tag,
+    apiConfigStatus.isConfigured,
+    apiConfigStatus.needsConfiguration,
+    fetchInitialData,
+  ]);
+
+  // 清除 API 配置錯誤
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) clearError();
   }, [apiConfigStatus.needsConfiguration, error, clearError]);
 
+  // 淡入動畫
   useEffect(() => {
     if (!loading && contentData.length > 0) {
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    } else if (loading) fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else if (loading) {
+      fadeAnim.setValue(0);
+    }
   }, [loading, contentData.length]);
 
   const handleCategorySelect = useCallback((category: Category) => {
@@ -231,16 +255,20 @@ export default function HomeScreen() {
           </View>
         ) : apiConfigStatus.isValidating ? (
           <View style={commonStyles.center}>
-            <ActivityIndicator size="large" color="#fff" />
-            <ThemedText style={{ marginTop: 16 }}>正在驗證伺服器...</ThemedText>
+            <ActivityIndicator size="large" />
+            <ThemedText type="subtitle">正在驗證伺服器配置...</ThemedText>
           </View>
-        ) : error ? (
+        ) : apiConfigStatus.error ? (
           <View style={commonStyles.center}>
-            <ThemedText type="subtitle" style={{ color: "#ff6b6b" }}>{error}</ThemedText>
+            <ThemedText type="subtitle">{apiConfigStatus.error}</ThemedText>
           </View>
         ) : loading && contentData.length === 0 ? (
           <View style={commonStyles.center}>
-            <ActivityIndicator size="large" color="#fff" />
+            <ActivityIndicator size="large" />
+          </View>
+        ) : error ? (
+          <View style={commonStyles.center}>
+            <ThemedText type="subtitle">{error}</ThemedText>
           </View>
         ) : (
           <>
@@ -253,7 +281,7 @@ export default function HomeScreen() {
               keyExtractor={(item) => item.id.toString()}
               contentContainerStyle={{
                 paddingHorizontal: isTV ? 50 : spacing,
-                paddingBottom: insets.bottom + 120,
+                paddingBottom: insets.bottom + 100,
               }}
               columnWrapperStyle={{ justifyContent: "space-between" }}
               renderItem={({ item, index }) => (
@@ -321,16 +349,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 32,
-    paddingTop: 24,
-    paddingBottom: 16,
+    paddingTop: 20,
+    paddingBottom: 12,
   },
-  title: { fontSize: 36, fontWeight: "800", color: "white" },
-  liveText: { fontSize: 26, color: "#aaa" },
-  headerIcons: { flexDirection: "row", gap: 24 },
+  title: { fontSize: 36, fontWeight: "bold", color: "white" },
+  liveText: { fontSize: 15, color: "#aaa" },
+  headerIcons: { flexDirection: "row", gap: 20 },
   tab: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 8,
     marginHorizontal: 6,
   },
   tabTV: {
@@ -338,7 +366,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     minHeight: 84,
   },
-  tabText: { fontSize: 18, fontWeight: "600" },
+  tabText: { fontSize: 15, fontWeight: "600" },
   tabTextTV: { fontSize: 28, fontWeight: "800" },
   subTabTV: { paddingVertical: 24, minHeight: 74 },
   subTabTextTV: { fontSize: 25, fontWeight: "700" },
