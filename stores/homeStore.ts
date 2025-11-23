@@ -36,7 +36,7 @@ const initialCategories: Category[] = [
   { title: "豆瓣 Top250", type: "movie", tag: "top250" },
 ];
 
-// 添加缓存项接口
+// 添加缓存項接口
 interface CacheItem {
   data: RowItem[];
   timestamp: number;
@@ -62,7 +62,7 @@ interface HomeState {
   contentData: RowItem[];
   loading: boolean;
   loadingMore: boolean;
-  pageStart: number;
+  pageStart: number; // <--- 保持使用 pageStart
   hasMore: boolean;
   error: string | null;
   fetchInitialData: () => Promise<void>;
@@ -94,12 +94,13 @@ const useHomeStore = create<HomeState>((set, get) => ({
 
     // 最近播放不缓存，始终实时获取
     if (selectedCategory.type === 'record') {
-      set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
+      // 確保重置 pageStart，雖然記錄模式不需要分頁，但習慣上設置為 0
+      set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null }); 
       await get().loadMoreData();
       return;
     }
 
-    // 检查缓存
+    // 檢查缓存
     if (dataCache.has(cacheKey) && isValidCache(dataCache.get(cacheKey)!)) {
       const cachedData = dataCache.get(cacheKey)!;
       set({
@@ -112,6 +113,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
       return;
     }
 
+    // 確保這裡也是從 pageStart: 0 開始
     set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
     await get().loadMoreData();
   },
@@ -151,13 +153,14 @@ const useHomeStore = create<HomeState>((set, get) => ({
           // .filter((record) => record.progress !== undefined && record.progress > 0 && record.progress < 1)
           .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
 
-        set({ contentData: rowItems, hasMore: false });
+        // 記錄模式不需要分頁，所以直接設置全部數據，並設置 hasMore: false
+        set({ contentData: rowItems, hasMore: false }); 
       } else if (selectedCategory.type && selectedCategory.tag) {
         const result = await api.getDoubanData(
           selectedCategory.type,
           selectedCategory.tag,
           20,
-          pageStart
+          pageStart // <--- 正確使用 pageStart
         );
 
         const newItems = result.list.map((item) => ({
@@ -169,6 +172,8 @@ const useHomeStore = create<HomeState>((set, get) => ({
         const cacheKey = getCacheKey(selectedCategory);
 
         if (pageStart === 0) {
+          // ... 缓存清理和存储邏輯 (保持不變) ...
+          
           // 清理过期缓存
           for (const [key, value] of dataCache.entries()) {
             if (!isValidCache(value)) {
@@ -190,7 +195,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
             data: cacheItems,
             timestamp: Date.now(),
             type: selectedCategory.type,
-            hasMore: true // 始终为 true，因为我们允许继续加载
+            hasMore: true // 始终为 true，因為我們允許繼續加载
           });
 
           set({
@@ -199,10 +204,10 @@ const useHomeStore = create<HomeState>((set, get) => ({
             hasMore: result.list.length !== 0,
           });
         } else {
-          // 增量加载时更新缓存
+          // 增量加载時更新缓存
           const existingCache = dataCache.get(cacheKey);
           if (existingCache) {
-            // 只有当缓存数据少于最大限制时才更新缓存
+            // 只有當缓存數據少於最大限制時才更新缓存
             if (existingCache.data.length < MAX_ITEMS_PER_CACHE) {
               const updatedData = [...existingCache.data, ...newItems];
               const limitedCacheData = updatedData.slice(0, MAX_ITEMS_PER_CACHE);
@@ -210,12 +215,12 @@ const useHomeStore = create<HomeState>((set, get) => ({
               dataCache.set(cacheKey, {
                 ...existingCache,
                 data: limitedCacheData,
-                hasMore: true // 始终为 true，因为我们允许继续加载
+                hasMore: true // 始终為 true，因為我們允許繼續加载
               });
             }
           }
 
-          // 更新状态时使用所有数据
+          // 更新状态時使用所有數據
           set((state) => ({
             contentData: [...state.contentData, ...newItems],
             pageStart: state.pageStart + newItems.length,
@@ -229,6 +234,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
         set({ hasMore: false });
       }
     } catch (err: any) {
+      // ... 錯誤處理邏輯 (保持不變) ...
       let errorMessage = "加载失败，请重试";
 
       if (err.message === "API_URL_NOT_SET") {
@@ -261,9 +267,11 @@ const useHomeStore = create<HomeState>((set, get) => ({
       set({
         selectedCategory: category,
         contentData: [],
-        pageStart: 0,
+        pageStart: 0, // <--- 確保在切換分類時重置 pageStart
         hasMore: true,
-        error: null
+        error: null,
+        // 當切換分類時，如果內容不是從緩存中獲取，我們會觸發 fetchInitialData，
+        // 該函數將從 pageStart=0 開始載入。
       });
 
       if (category.type === 'record') {
@@ -290,6 +298,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
   },
 
   refreshPlayRecords: async () => {
+    // ... (保持不變，但邏輯與 pageStart: 0 一致) ...
     const { apiBaseUrl } = useSettingsStore.getState();
     await useAuthStore.getState().checkLoginStatus(apiBaseUrl);
     const { isLoggedIn } = useAuthStore.getState();
@@ -299,7 +308,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
         if (recordCategoryExists) {
           const newCategories = state.categories.filter((c) => c.type !== "record");
           if (state.selectedCategory.type === "record") {
-            get().selectCategory(newCategories[0] || null);
+            get().selectCategory(newCategories[0] || initialCategories[1]); // 使用 initialCategories[1] 作為備用
           }
           return { categories: newCategories };
         }
@@ -317,14 +326,21 @@ const useHomeStore = create<HomeState>((set, get) => ({
       if (!hasRecords && recordCategoryExists) {
         const newCategories = state.categories.filter((c) => c.type !== "record");
         if (state.selectedCategory.type === "record") {
-          get().selectCategory(newCategories[0] || null);
+          get().selectCategory(newCategories[0] || initialCategories[1]); // 使用 initialCategories[1] 作為備用
         }
         return { categories: newCategories };
       }
       return {};
     });
-
-    get().fetchInitialData();
+    
+    // 如果選中「最近播放」，則重新加載數據
+    if(get().selectedCategory.type === 'record') {
+        get().fetchInitialData();
+    }
+    
+    // 如果不是「最近播放」，但需要刷新數據，則調用 fetchInitialData
+    // 這裡原本就是調用 fetchInitialData，保持不變
+    // get().fetchInitialData(); 
   },
 
   clearError: () => {

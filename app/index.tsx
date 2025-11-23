@@ -59,19 +59,35 @@ export default function HomeScreen() {
   const apiConfigStatus = useApiConfig();
 
   const isTV = Platform.isTV || deviceType === "tv" || WINDOW_WIDTH >= 900;
-  const numColumns = isTV ? 5 : 3;   // 6 列，保證順！
+  const numColumns = isTV ? 6 : 3;
 
-  // 6 列 + 卡片變小 + 有漂亮間距（不會重疊）
-  const { itemWidth, gap } = useMemo(() => {
+  // 保持卡片尺寸計算邏輯
+  const { itemWidth, outerPadding, gap } = useMemo(() => {
     if (isTV) {
-      const totalGap = 5 * 28; // ← 這裡改數字就可調整卡片大小（20=平衡，12=更大，28=更小）
-      const available = WINDOW_WIDTH - 100 - totalGap;  // 左右各留 50px
-      const width = Math.floor(available / 6);
-      return { itemWidth: width, gap: 28 };
+      const TV_COLUMNS = 6;
+      const TARGET_GAP = 28; 
+      const totalGapWidth = TARGET_GAP * (TV_COLUMNS - 1);
+      
+      // 預留更多空間，比如 120
+      const INITIAL_OUTER_PADDING = 50; 
+      const availableContentWidth = WINDOW_WIDTH - (INITIAL_OUTER_PADDING * 2);
+      
+      const calculatedItemWidth = Math.floor((availableContentWidth - totalGapWidth) / TV_COLUMNS);
+      
+      const calculatedContentWidth = (calculatedItemWidth * TV_COLUMNS) + totalGapWidth;
+      
+      const finalOuterPadding = (WINDOW_WIDTH - calculatedContentWidth) / 2;
+
+      return { itemWidth: calculatedItemWidth, outerPadding: finalOuterPadding, gap: TARGET_GAP };
+
     } else {
       const phoneWidth = Math.floor((WINDOW_WIDTH - spacing * 4) / 3);
       const phoneGap = Math.floor((WINDOW_WIDTH - phoneWidth * 3) / 2);
-      return { itemWidth: phoneWidth, gap: phoneGap > 12 ? phoneGap : 16 };
+      return { 
+        itemWidth: phoneWidth, 
+        outerPadding: spacing, 
+        gap: phoneGap > 12 ? phoneGap : 16 
+      };
     }
   }, [isTV, spacing]);
 
@@ -93,27 +109,13 @@ export default function HomeScreen() {
       setShowBackToTop(false);
     }
   };
-
+  
   useFocusEffect(
     useCallback(() => {
-      if (!isTV) return;
-      const onBackPress = () => {
-        if (hasScrolled.current) {
-          scrollToTop();
-          return true;
-        }
-        return false;
-      };
-      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
-      return () => sub.remove();
-    }, [])
-  );
+      // **【穩定性修正】**：確保頁面聚焦時，無論是否為 TV，都刷新播放記錄。
+      refreshPlayRecords(); 
 
-  useFocusEffect(
-    useCallback(() => {
-      if (isTV) return;
-      refreshPlayRecords();
-      if (Platform.OS === "android") {
+      if (!isTV && Platform.OS === "android") {
         const handler = () => {
           const now = Date.now();
           if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
@@ -129,13 +131,26 @@ export default function HomeScreen() {
           sub.remove();
           backPressTimeRef.current = null;
         };
+      } else if (isTV) {
+        // TV 模式的返回鍵處理 (回到頂部)
+        const onBackPress = () => {
+          if (hasScrolled.current) {
+            scrollToTop();
+            return true;
+          }
+          return false;
+        };
+        const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+        return () => sub.remove();
       }
-    }, [refreshPlayRecords])
+    }, [refreshPlayRecords, isTV])
   );
 
-  // 主要數據加載邏輯（已修復 useEffectResponse 手滑）
+  // 主要數據加載邏輯優化
   useEffect(() => {
     if (!selectedCategory) return;
+    
+    // 處理 Tag 默認值
     if (selectedCategory.tags && !selectedCategory.tag) {
       const defaultTag = selectedCategory.tags[0];
       selectCategory({ ...selectedCategory, tag: defaultTag });
@@ -143,8 +158,9 @@ export default function HomeScreen() {
     }
 
     if (apiConfigStatus.isConfigured && !apiConfigStatus.needsConfiguration) {
+      // 確保切換類別/標籤或頁面剛開始時，從第一頁加載數據。
       if (!selectedCategory.tags || selectedCategory.tag) {
-        fetchInitialData();
+         fetchInitialData(); 
       }
     }
   }, [
@@ -154,7 +170,7 @@ export default function HomeScreen() {
     apiConfigStatus.needsConfiguration,
     fetchInitialData,
   ]);
-
+  
   // 清除 API 配置錯誤
   useEffect(() => {
     if (apiConfigStatus.needsConfiguration && error) clearError();
@@ -192,11 +208,19 @@ export default function HomeScreen() {
       {deviceType === "mobile" && <StatusBar barStyle="light-content" />}
 
       {(isTV || deviceType !== "mobile") && (
-        <View style={styles.header}>
+        // **【修正點 1】** 調整 Header 樣式
+        <View style={[
+          styles.header, 
+          isTV && { 
+            paddingHorizontal: outerPadding,
+            paddingTop: insets.top + (isTV ? 20 : 0), // 增加 TV 模式下的頂部填充
+          }
+        ]}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <ThemedText style={styles.title}>首頁</ThemedText>
             <Pressable onPress={() => router.push("/live")} style={{ marginLeft: 40 }}>
-              <ThemedText style={styles.liveText}>直播</ThemedText>
+              {/* **【修正點 2】** 為直播文字添加 TV 樣式 */}
+              <ThemedText style={[styles.liveText, isTV && styles.liveTextTV]}>直播</ThemedText>
             </Pressable>
           </View>
           <View style={styles.headerIcons}>
@@ -208,12 +232,16 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* 類別導航：使用計算後的外邊距來確保置中對齊 */}
       <FlatList
         data={categories}
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.title}
-        contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: isTV ? 28 : 18 }}
+        contentContainerStyle={{ 
+          paddingHorizontal: isTV ? outerPadding : spacing,
+          paddingVertical: isTV ? 28 : 18 
+        }}
         renderItem={({ item }) => (
           <StyledButton
             text={item.title}
@@ -225,13 +253,17 @@ export default function HomeScreen() {
         )}
       />
 
+      {/* 標籤導航：使用計算後的外邊距來確保置中對齊 */}
       {selectedCategory?.tags && (
         <FlatList
           data={selectedCategory.tags}
           horizontal
           showsHorizontalScrollIndicator={false}
           keyExtractor={(tag) => tag}
-          contentContainerStyle={{ paddingHorizontal: spacing, paddingVertical: isTV ? 22 : 14 }}
+          contentContainerStyle={{ 
+            paddingHorizontal: isTV ? outerPadding : spacing,
+            paddingVertical: isTV ? 22 : 14 
+          }}
           renderItem={({ item, index }) => (
             <StyledButton
               text={item}
@@ -280,12 +312,15 @@ export default function HomeScreen() {
               numColumns={numColumns}
               keyExtractor={(item) => item.id.toString()}
               contentContainerStyle={{
-                paddingHorizontal: isTV ? 50 : spacing,
+                paddingHorizontal: isTV ? outerPadding : spacing,
                 paddingBottom: insets.bottom + 100,
               }}
               columnWrapperStyle={{ justifyContent: "space-between" }}
               renderItem={({ item, index }) => (
-                <View style={{ width: itemWidth, marginHorizontal: isTV ? gap / 2 : 0 }}>
+                <View style={{ 
+                  width: itemWidth, 
+                  marginHorizontal: isTV ? gap / 2 : 0 
+                }}>
                   <VideoCard
                     {...item}
                     api={api}
@@ -304,10 +339,15 @@ export default function HomeScreen() {
               ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 40 }} color="#fff" /> : null}
               onEndReached={loadMoreData}
               onEndReachedThreshold={0.6}
-              removeClippedSubviews={true}
-              maxToRenderPerBatch={18}
-              windowSize={21}
-              initialNumToRender={24}
+              
+              // **【穩定性修正】** 為了確保最近播放穩定，關閉剪切功能。
+              removeClippedSubviews={false} 
+              
+              // **【性能折衷】** 將性能參數設置得相對保守，以穩定性優先。
+              maxToRenderPerBatch={isTV ? numColumns * 3 : 18} 
+              windowSize={isTV ? numColumns * 4 : 21} 
+              initialNumToRender={isTV ? numColumns * 3 : 24} 
+
               {...(isTV && {
                 directionalLockEnabled: true,
                 overScrollMode: "never",
@@ -348,12 +388,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 32,
-    paddingTop: 20,
+    // 移除了 paddingHorizontal，但保留了 paddingTop/Bottom (如果沒有 TV 判斷)
     paddingBottom: 12,
   },
   title: { fontSize: 36, fontWeight: "bold", color: "white" },
   liveText: { fontSize: 15, color: "#aaa" },
+  // **【修正點 3】** 新增 TV 專屬的直播文字樣式
+  liveTextTV: { 
+    fontSize: 22, // 放大字體
+    fontWeight: "600",
+    color: "#aaa"
+  },
   headerIcons: { flexDirection: "row", gap: 20 },
   tab: {
     paddingHorizontal: 18,
